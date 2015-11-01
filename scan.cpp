@@ -8,6 +8,7 @@
 #include <limits>
 #include <boost/program_options.hpp>
 #include "fft.h"
+#include "process.h"
 #include "scan.h"
 
 /* The RX and TX modules are configured independently for these parameters */
@@ -187,7 +188,6 @@ int main(int argc, char *argv[])
   uint32_t frequencies[num_frequencies];
   struct bladerf_quick_tune quick_tunes[num_frequencies];
   int16_t sample_buffer[num_samples][2];
-  fftwf_complex float_samples[num_samples];
   char format[128];
 
   for (uint32_t i = 0; i < num_frequencies; i++) {
@@ -199,11 +199,11 @@ int main(int argc, char *argv[])
 
   populate_quick_tunes(dev, num_frequencies, frequencies, quick_tunes);
 
-  FFT fft(num_samples);
-  fftwf_complex * fft_output = reinterpret_cast<fftwf_complex *>(fftwf_alloc_complex(num_samples));
+  ProcessSamples process(num_samples, sample_rate, threshold, true);
 
   struct timespec start, stop;
   clock_gettime(CLOCK_REALTIME, &start);
+
   for (uint32_t i = 0; i < num_iterations; i++) {
     for (uint32_t j = 0; j < num_frequencies; j++) {
       /* Tune to the specified frequency immediately via BLADERF_RETUNE_NOW.
@@ -240,9 +240,7 @@ int main(int argc, char *argv[])
         HANDLE_ERROR(format);
       }
 
-      short_complex_to_float_complex(sample_buffer, num_samples, float_samples);
-      fft.process(fft_output, float_samples);
-      process_fft(fft_output, num_samples, frequencies[j], sample_rate);
+      process.Run(sample_buffer, frequencies[j]);
     }
   }
   // Calculate and report time.
