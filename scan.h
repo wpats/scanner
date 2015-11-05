@@ -6,7 +6,6 @@ int populate_quick_tunes(struct bladerf * dev,
 
 void handle_error(struct bladerf * dev, int status, const char * format);
 
-#define HANDLE_ERROR(format) handle_error(dev, status, format)
 
 void short_complex_to_float_complex(int16_t source[][2],
                                     uint32_t sample_count,

@@ -1,8 +1,13 @@
 
-OBJS = scan.o fft.o process.o
+OBJS := scan.o fft.o process.o bladerfSource.o b210Source.o
+HEADERS := scan.h signalSource.h process.h fft.h bladerfSource.h b210Source.h
+LIBS = -lfftw3f -lboost_program_options -lboost_thread -lboost_system 
 
-scan: $(OBJS)
-	g++ -g -o scan $(OBJS) -L ../target/lib -lbladeRF -L /usr/lib/x86_64-linux-gnu -lfftw3f -lboost_program_options
+scan: $(OBJS) Makefile
+	g++ -g -o scan $(OBJS) -L ../target/lib -lbladeRF -luhd -L /usr/lib/x86_64-linux-gnu $(LIBS)
 
-%.o: %.cpp
-	g++ -g -O3 -o $@ -c -I ../target/include -std=gnu++11 $<
+clean:
+	rm *.o
+
+%.o: %.cpp $(HEADERS) Makefile 
+	g++ -g -o $@ -c -I ../target/include -std=gnu++11 $<
