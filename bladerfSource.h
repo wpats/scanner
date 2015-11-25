@@ -32,4 +32,3 @@ class BladerfSource : public SignalSource
   virtual bool GetNextSamples(int16_t sample_buffer[][2], double & centerFrequency);
 };
 
-#define HANDLE_ERROR(format, ...) this->handle_error(this->m_dev, status, format, ##__VA_ARGS__)

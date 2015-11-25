@@ -9,6 +9,8 @@
 #include "signalSource.h"
 #include "bladerfSource.h"
 
+#define HANDLE_ERROR(format, ...) this->handle_error(this->m_dev, status, format, ##__VA_ARGS__)
+
 BladerfSource::~BladerfSource()
 {
   bladerf_close(this->m_dev);
@@ -112,11 +114,11 @@ BladerfSource::BladerfSource(uint32_t sampleRate,
                              double startFrequency, 
                              double stopFrequency)
   : m_sampleRate(sampleRate),
-    m_sampleCount(sampleCount)
+    m_sampleCount(sampleCount),
+    m_frequencyIndex(0)
 {
   int status;
   struct module_config config;
-  struct bladerf *dev = NULL;
   struct bladerf_devinfo dev_info;
 
   /* Initialize the information used to identify the desired device
@@ -139,7 +141,7 @@ BladerfSource::BladerfSource(uint32_t sampleRate,
   config.rx_lna = BLADERF_LNA_GAIN_MAX;
   config.vga1 = 30;
   config.vga2 = 3;
-  status = configure_module(dev, &config);
+  status = configure_module(this->m_dev, &config);
   HANDLE_ERROR("Failed to configure RX module. Exiting.\n");
 
   /* Set up TX module parameters */
@@ -149,7 +151,7 @@ BladerfSource::BladerfSource(uint32_t sampleRate,
   config.samplerate = 250000;
   config.vga1 = -14;
   config.vga2 = 0;
-  status = configure_module(dev, &config);
+  status = configure_module(this->m_dev, &config);
   HANDLE_ERROR("Failed to configure TX module. Exiting.\n");
 
   /* Application code goes here.
@@ -158,11 +160,11 @@ BladerfSource::BladerfSource(uint32_t sampleRate,
    * transmit or receive samples!
    */
   
-  bladerf_enable_module(dev, BLADERF_MODULE_RX, true);
-  bladerf_enable_module(dev, BLADERF_MODULE_TX, false);
+  bladerf_enable_module(this->m_dev, BLADERF_MODULE_RX, true);
+  bladerf_enable_module(this->m_dev, BLADERF_MODULE_TX, false);
 
   const uint32_t num_samples = 8192;
-  status = bladerf_sync_config(dev,
+  status = bladerf_sync_config(this->m_dev,
                                BLADERF_MODULE_RX,
                                BLADERF_FORMAT_SC16_Q11,
                                8,
@@ -212,5 +214,6 @@ bool BladerfSource::GetNextSamples(int16_t sample_buffer[][2], double & centerFr
   HANDLE_ERROR("Failed to receive samples at %u Hz: %%s\n", 
                this->m_frequencies[this->m_frequencyIndex]);
   this->m_frequencyIndex = (this->m_frequencyIndex + 1) % this->m_numFrequencies;
+  return true;
 }
 

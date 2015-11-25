@@ -4,6 +4,7 @@
 #include <time.h>
 #include <libbladeRF.h>
 #include <uhd/usrp/multi_usrp.hpp>
+#include <libairspy/airspy.h>
 #include <math.h>
 #include <iostream>
 #include <limits>
@@ -13,6 +14,7 @@
 #include "signalSource.h"
 #include "bladerfSource.h"
 #include "b210Source.h"
+#include "airspySource.h"
 #include "scan.h"
 
 
@@ -44,7 +46,7 @@ int main(int argc, char *argv[])
   po::options_description desc("Program options");
   desc.add_options()
     ("help", "print help message")
-    ("args", po::value<std::string>(&args)->default_value(""), "single uhd device address args")
+    ("args", po::value<std::string>(&args)->default_value(""), "device args")
     ("n_iterations,n", po::value<uint32_t>(&num_iterations)->default_value(10), "Number of iterations")
     ("sample_rate,s", po::value<uint32_t>(&sample_rate)->default_value(8000000), "Sample rate")
     ("threshold,t", po::value<float>(&threshold)->default_value(10.0), "Threshold");
@@ -75,15 +77,22 @@ int main(int argc, char *argv[])
     return 1;
   }
 
-#if 0
-  SignalSource * source = new BladerfSource(sample_rate, num_samples, startFrequency, stopFrequency);
-#endif
-
-  SignalSource * source = new B210Source(args, 
-                                         sample_rate, 
-                                         num_samples, 
-                                         startFrequency, 
-                                         stopFrequency);
+  SignalSource * source = nullptr;
+  if (args.find("bladerf") != std::string::npos) {
+    source = new BladerfSource(sample_rate, num_samples, startFrequency, stopFrequency);
+  } else if (args.find("b210") != std::string::npos) {
+    source = new B210Source(args, 
+      sample_rate, 
+      num_samples, 
+      startFrequency, 
+      stopFrequency);
+  } else {
+    source = new AirspySource(args, 
+      sample_rate, 
+      num_samples, 
+      startFrequency, 
+      stopFrequency);
+  }
 
   ProcessSamples process(num_samples, sample_rate, threshold, true);
 
@@ -95,10 +104,19 @@ int main(int argc, char *argv[])
   double previousFrequency = startFrequency;
   for (uint32_t i = 0; i < num_iterations;) {
     double centerFrequency;
+    struct timespec iterStart, iterStop;
+    clock_gettime(CLOCK_REALTIME, &iterStart);
     if (!source->GetNextSamples(sample_buffer, centerFrequency)) {
       fprintf(stderr, "Receive samples failed, exiting...\n");
       break;
     }
+    // Calculate and report time.
+    clock_gettime(CLOCK_REALTIME, &iterStop);
+    double startd = iterStart.tv_sec*1000.0 + iterStart.tv_nsec/1e6;
+    double stopd = iterStop.tv_sec*1000.0 + iterStop.tv_nsec/1e6;
+    double elapsed = stopd - startd;
+    // fprintf(stderr, "Iteration time = %f ms\n", elapsed);
+    // Process samples
     process.Run(sample_buffer, centerFrequency);
     // Detect complete scan.
     if (centerFrequency < previousFrequency) {
