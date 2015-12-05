@@ -24,7 +24,8 @@ class BladerfSource : public SignalSource
   void handle_error(struct bladerf * dev, int status, const char * format, ...);
 
  public:
-  BladerfSource(uint32_t sampleRate, 
+  BladerfSource(std::string args,
+                uint32_t sampleRate, 
                 uint32_t sampleCount, 
                 double startFrequency, 
                 double stopFrequency);

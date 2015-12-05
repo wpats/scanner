@@ -11,11 +11,12 @@
 #define HANDLE_ERROR(format, ...) this->handle_error(this->m_dev, status, format, ##__VA_ARGS__)
 
 B210Source::B210Source(std::string args,
-                      uint32_t sampleRate, 
-                      uint32_t sampleCount, 
-                      double startFrequency, 
-                      double stopFrequency)
-  : m_sampleRate(sampleRate),
+                       uint32_t sampleRate, 
+                       uint32_t sampleCount, 
+                       double startFrequency, 
+                       double stopFrequency)
+  : SignalSource(true),
+    m_sampleRate(sampleRate),
     m_sampleCount(sampleCount),
     m_startFrequency(startFrequency),
     m_stopFrequency(stopFrequency),
@@ -76,11 +77,14 @@ void B210Source::Retune()
   tune_req.dsp_freq_policy = uhd::tune_request_t::POLICY_AUTO;
   tune_req.rf_freq = this->m_currentFrequency;
   tune_req.rf_freq_policy = uhd::tune_request_t::POLICY_MANUAL;
+  this->StartTimer();
   this->m_usrp->set_rx_freq(tune_req);
   while (not this->m_usrp->get_rx_sensor("lo_locked").to_bool()) {
     //sleep for a short time in milliseconds
     boost::this_thread::sleep(boost::posix_time::milliseconds(10));
   }
+  this->StopTimer();
+  this->AddRetuneTime();
   if (this->m_verbose) {
     std::cout << "Tuned to " << this->m_currentFrequency << std::endl;
   }
@@ -122,6 +126,7 @@ bool B210Source::GetNextSamples(int16_t sample_buffer[][2], double & centerFrequ
     // setup the buffer.
     buffs[0] = &sample_buffer[nSamples][0];
     //receive a single packet
+    this->StartTimer();
     size_t num_rx_samps = this->m_rx_stream->recv(buffs, 
                                                   this->m_sampleCount - nSamples,
                                                   md, 
@@ -135,7 +140,8 @@ bool B210Source::GetNextSamples(int16_t sample_buffer[][2], double & centerFrequ
       throw std::runtime_error(str(boost::format("Receiver error %s"
                                                  ) % md.strerror()));
     }
-
+    this->StopTimer();
+    this->AddGetSamplesTime();
     if (this->m_verbose) {
       std::cout << boost::format(
             "Received packet: %u samples, %u full secs, %f frac secs"

@@ -78,9 +78,18 @@ int main(int argc, char *argv[])
   }
 
   SignalSource * source = nullptr;
+  uint32_t enob = 12;
+  bool correctDCOffset = false;
+  bool ignoreCenterFrequency = false;
   if (args.find("bladerf") != std::string::npos) {
-    source = new BladerfSource(sample_rate, num_samples, startFrequency, stopFrequency);
-  } else if (args.find("b210") != std::string::npos) {
+    source = new BladerfSource(args,
+                               sample_rate, 
+                               num_samples, 
+                               startFrequency, 
+                               stopFrequency);
+    correctDCOffset = true;
+    ignoreCenterFrequency = true;
+  } else if (args.find("b200") != std::string::npos) {
     source = new B210Source(args, 
       sample_rate, 
       num_samples, 
@@ -94,33 +103,44 @@ int main(int argc, char *argv[])
       stopFrequency);
   }
 
-  ProcessSamples process(num_samples, sample_rate, threshold, true);
+  ProcessSamples process(num_samples, 
+                         sample_rate,
+                         enob,
+                         threshold, 
+                         gr::fft::window::WIN_BLACKMAN_HARRIS,
+                         correctDCOffset, 
+                         ignoreCenterFrequency);
 
   source->Start();
 
   struct timespec start, stop;
   clock_gettime(CLOCK_REALTIME, &start);
+  double startIter = start.tv_sec*1000.0 + start.tv_nsec/1e6;
 
   double previousFrequency = startFrequency;
   for (uint32_t i = 0; i < num_iterations;) {
     double centerFrequency;
-    struct timespec iterStart, iterStop;
-    clock_gettime(CLOCK_REALTIME, &iterStart);
     if (!source->GetNextSamples(sample_buffer, centerFrequency)) {
       fprintf(stderr, "Receive samples failed, exiting...\n");
       break;
     }
-    // Calculate and report time.
-    clock_gettime(CLOCK_REALTIME, &iterStop);
-    double startd = iterStart.tv_sec*1000.0 + iterStart.tv_nsec/1e6;
-    double stopd = iterStop.tv_sec*1000.0 + iterStop.tv_nsec/1e6;
-    double elapsed = stopd - startd;
-    // fprintf(stderr, "Iteration time = %f ms\n", elapsed);
+    source->WriteTimingData();
     // Process samples
     process.Run(sample_buffer, centerFrequency);
     // Detect complete scan.
     if (centerFrequency < previousFrequency) {
       i++;
+#if 1
+      // Calculate and report time.
+      if (i % 1 == 0) {
+        struct timespec iterStop;
+        clock_gettime(CLOCK_REALTIME, &iterStop);
+        double stopd = iterStop.tv_sec*1000.0 + iterStop.tv_nsec/1e6;
+        double elapsed = stopd - startIter;
+        fprintf(stderr, "Iteration time = %f ms\n", elapsed/1.0);
+        startIter = stopd;
+      }
+#endif
     }
     previousFrequency = centerFrequency;
   }

@@ -109,7 +109,8 @@ void BladerfSource::handle_error(struct bladerf * dev, int status, const char * 
   }
 }
 
-BladerfSource::BladerfSource(uint32_t sampleRate, 
+BladerfSource::BladerfSource(std::string args,
+                             uint32_t sampleRate, 
                              uint32_t sampleCount, 
                              double startFrequency, 
                              double stopFrequency)
@@ -166,18 +167,20 @@ BladerfSource::BladerfSource(uint32_t sampleRate,
   const uint32_t num_samples = 8192;
   status = bladerf_sync_config(this->m_dev,
                                BLADERF_MODULE_RX,
-                               BLADERF_FORMAT_SC16_Q11,
+                               BLADERF_FORMAT_SC16_Q11_META,
                                8,
                                num_samples,
                                4,
-                               5);
+                               0);
   
-  this->m_numFrequencies = (stopFrequency - startFrequency)/sampleRate + 1;
+  bladerf_enable_module(this->m_dev, BLADERF_MODULE_RX, true);
+
+  this->m_numFrequencies = ceil((stopFrequency - startFrequency)/sampleRate);
   this->m_frequencies = new uint32_t[this->m_numFrequencies];
   this->m_quickTunes = new struct bladerf_quick_tune[this->m_numFrequencies];
 
   for (uint32_t i = 0; i < this->m_numFrequencies; i++) {
-    this->m_frequencies[i] = startFrequency + i * sampleRate;
+    this->m_frequencies[i] = startFrequency + i * sampleRate + sampleRate/2;
     fprintf(stderr, "Frequency %d: %u\n", i, this->m_frequencies[i]);
   }
 
@@ -192,6 +195,9 @@ bool BladerfSource::GetNextSamples(int16_t sample_buffer[][2], double & centerFr
    * timestamp counter value */
   int status;
   uint32_t delta = 100;
+  struct bladerf_metadata metadata;
+  memset(&metadata, 0, sizeof(metadata));
+
   centerFrequency = this->m_frequencies[this->m_frequencyIndex];
   status = bladerf_schedule_retune(this->m_dev, 
                                    BLADERF_MODULE_RX, 
@@ -201,18 +207,40 @@ bool BladerfSource::GetNextSamples(int16_t sample_buffer[][2], double & centerFr
   HANDLE_ERROR("Failed to apply quick tune at %u Hz: %%s\n", 
                centerFrequency);
 
+  /* Retrieve the current timestamp */
+  
+  struct bladerf_metadata metadata2;
+  memset(&metadata, 0, sizeof(metadata));
+  status = bladerf_get_timestamp(this->m_dev, 
+                                 BLADERF_MODULE_RX, 
+                                 &metadata2.timestamp);
+  HANDLE_ERROR("Failed to get current RX timestamp: %s\n");
+  // fprintf(stderr, "Current RX timestamp: 0x%016lx ", metadata2.timestamp);
+
+  /* Schedule the RX to be ~1 ms in the future */
+  // metadata.timestamp += 10*this->m_sampleRate;
+  // fprintf(stderr, " 0x%016lx ", metadata2.timestamp);
+
+  metadata.flags = BLADERF_META_FLAG_RX_NOW;
+  // metadata.flags = 0;
+
   // sleep(0.010);
   //fprintf(stderr, "Tuned to %u\n", frequencies[j]);
   /* ... Handle signals at current frequency ... */
-  struct bladerf_metadata metadata;
-  status = bladerf_sync_rx(this->m_dev,
-                           sample_buffer,
-                           this->m_sampleCount,
-                           &metadata,
-                           0);
+  while (true) {
+    status = bladerf_sync_rx(this->m_dev,
+                             sample_buffer,
+                             this->m_sampleCount,
+                             &metadata,
+                             0);
                              
-  HANDLE_ERROR("Failed to receive samples at %u Hz: %%s\n", 
-               this->m_frequencies[this->m_frequencyIndex]);
+    // fprintf(stderr, " 0x%016lx\n", metadata.timestamp);
+    HANDLE_ERROR("Failed to receive samples at %u Hz: %%s\n", 
+                 this->m_frequencies[this->m_frequencyIndex]);
+    if (metadata.timestamp >= metadata2.timestamp) {
+      break;
+    }
+  }
   this->m_frequencyIndex = (this->m_frequencyIndex + 1) % this->m_numFrequencies;
   return true;
 }
