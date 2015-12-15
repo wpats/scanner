@@ -1,29 +1,17 @@
 
 #pragma once
 
+#include <time.h>
 #include <gnuradio/fft/window.h>
+#include "fft.h"
+#include "buffer.h"
 
 class FFTWindow {
-  void ComputeWindowHanning();
-  void ComputeWindowHamming();
-  void ComputeWindowBlackman();
-  void ComputeWindowBlackmanHarris();
-  void ComputeWindowDolphChebyshev();
-  
   std::vector<float> m_windowVector;
   float * m_window;
   uint32_t m_numSamples;
  public:
-  enum WindowKind {
-    WindowNone,
-    WindowHanning,
-    WindowHamming,
-    WindowBlackman,
-    WindowBlackmanHarris,
-    WindowDolphChebyshev
-  } m_kind;
   gr::fft::window::win_type m_type;
-  FFTWindow(WindowKind kind, uint32_t numSamples);
   FFTWindow(gr::fft::window::win_type type, uint32_t numSamples);
   ~FFTWindow();
   void apply(fftwf_complex * samples);
@@ -39,18 +27,24 @@ class ProcessSamples {
   void process_fft(fftwf_complex * fft_data, 
                    uint32_t center_frequency);
   void WriteToFile(const char * fileName, fftwf_complex * data);
+  void WriteSamplesToFile(std::string fileName, uint32_t count);
+  std::string GenerateFileName(time_t startTime, double_t centerFrequency);
 
   uint32_t m_sampleCount;
   uint32_t m_sampleRate;
   uint32_t m_enob;
+  uint32_t m_fileCounter;
   bool m_correctDCOffset;
-  bool m_ignoreCenterFrequency;
+  bool m_dcIgnoreWindow;
+  bool m_writeSamples;
+  bool m_doFFT;
   float m_threshold;
   FFT m_fft;
   FFTWindow m_fftWindow;
+  CircularBuffer<fftwf_complex, 8192*16> m_circularBuffer;
+  FileWriteProcessInterface m_writeInterface;
   fftwf_complex * m_inputSamples;
   fftwf_complex * m_fftOutputBuffer;
-  
  public:
   ProcessSamples(uint32_t numSamples, 
                  uint32_t sampleRate, 
@@ -58,7 +52,14 @@ class ProcessSamples {
                  float threshold, 
                  gr::fft::window::win_type windowType,
                  bool correctDCOffset,
-                 bool ignoreCenterFrequency);
+                 uint32_t dcIgnoreWindow = 0,
+                 std::string outFileName = "",
+                 bool doFFT = true);
+  ~ProcessSamples();
   void Run(int16_t sample_buffer[][2], uint32_t centerFrequency);
+  void RecordSamples(SignalSource * signalSource,
+                     uint64_t count,
+                     double threshold);
+  void WriteSamples(uint32_t count);
   bool m_writeData;
 };

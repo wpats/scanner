@@ -1,3 +1,6 @@
+#pragma once
+
+#include <libairspy/airspy.h>
 
 class AirspySource : public SignalSource
 {
@@ -6,12 +9,7 @@ class AirspySource : public SignalSource
     GetSamples,
     GotSamples
   } m_streamingState;
-  uint32_t m_sampleRate;
-  uint32_t m_sampleCount;
   struct airspy_device * m_dev;
-  uint32_t m_numFrequencies;
-  uint32_t * m_frequencies;
-  uint32_t m_frequencyIndex;
   int16_t (*m_sample_buffer)[2];
   bool m_done_streaming;
   void handle_error(int status, const char * format, ...);

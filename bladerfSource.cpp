@@ -87,7 +87,7 @@ bool BladerfSource::populate_quick_tunes()
   int status;
   unsigned int i, j;
   /* Get our quick tune parameters for each frequency we'll be using */
-  for (i = 0; i < this->m_numFrequencies; i++) {
+  for (i = 0; i < this->m_frequencies.size(); i++) {
     status = bladerf_set_frequency(this->m_dev, BLADERF_MODULE_RX, this->m_frequencies[i]);
     HANDLE_ERROR("Failed to set frequency to %u Hz: %%s\n", this->m_frequencies[i]);
     status = bladerf_get_quick_tune(this->m_dev, BLADERF_MODULE_RX, &this->m_quickTunes[i]);
@@ -114,9 +114,7 @@ BladerfSource::BladerfSource(std::string args,
                              uint32_t sampleCount, 
                              double startFrequency, 
                              double stopFrequency)
-  : m_sampleRate(sampleRate),
-    m_sampleCount(sampleCount),
-    m_frequencyIndex(0)
+  : SignalSource(sampleRate, sampleCount, startFrequency, stopFrequency)
 {
   int status;
   struct module_config config;
@@ -174,16 +172,7 @@ BladerfSource::BladerfSource(std::string args,
                                0);
   
   bladerf_enable_module(this->m_dev, BLADERF_MODULE_RX, true);
-
-  this->m_numFrequencies = ceil((stopFrequency - startFrequency)/sampleRate);
-  this->m_frequencies = new uint32_t[this->m_numFrequencies];
-  this->m_quickTunes = new struct bladerf_quick_tune[this->m_numFrequencies];
-
-  for (uint32_t i = 0; i < this->m_numFrequencies; i++) {
-    this->m_frequencies[i] = startFrequency + i * sampleRate + sampleRate/2;
-    fprintf(stderr, "Frequency %d: %u\n", i, this->m_frequencies[i]);
-  }
-
+  this->m_quickTunes = new struct bladerf_quick_tune[this->m_frequencies.size()];
   this->populate_quick_tunes();
 }
 
@@ -198,31 +187,30 @@ bool BladerfSource::GetNextSamples(int16_t sample_buffer[][2], double & centerFr
   struct bladerf_metadata metadata;
   memset(&metadata, 0, sizeof(metadata));
 
-  centerFrequency = this->m_frequencies[this->m_frequencyIndex];
   status = bladerf_schedule_retune(this->m_dev, 
                                    BLADERF_MODULE_RX, 
                                    BLADERF_RETUNE_NOW, // + delta, 
                                    0,
                                    &this->m_quickTunes[this->m_frequencyIndex]);
+  centerFrequency = this->GetNextFrequency();
   HANDLE_ERROR("Failed to apply quick tune at %u Hz: %%s\n", 
                centerFrequency);
 
   /* Retrieve the current timestamp */
-  
   struct bladerf_metadata metadata2;
-  memset(&metadata, 0, sizeof(metadata));
+  memset(&metadata2, 0, sizeof(metadata2));
   status = bladerf_get_timestamp(this->m_dev, 
                                  BLADERF_MODULE_RX, 
                                  &metadata2.timestamp);
   HANDLE_ERROR("Failed to get current RX timestamp: %s\n");
-  // fprintf(stderr, "Current RX timestamp: 0x%016lx ", metadata2.timestamp);
+  fprintf(stderr, "Current RX timestamp: 0x%016lx ", metadata2.timestamp);
 
   /* Schedule the RX to be ~1 ms in the future */
-  // metadata.timestamp += 10*this->m_sampleRate;
-  // fprintf(stderr, " 0x%016lx ", metadata2.timestamp);
+  // metadata2.timestamp += this->m_sampleRate;
+  fprintf(stderr, " 0x%016lx ", metadata2.timestamp);
+  metadata = metadata2;
 
-  metadata.flags = BLADERF_META_FLAG_RX_NOW;
-  // metadata.flags = 0;
+  metadata2.flags = BLADERF_META_FLAG_RX_NOW;
 
   // sleep(0.010);
   //fprintf(stderr, "Tuned to %u\n", frequencies[j]);
@@ -231,17 +219,16 @@ bool BladerfSource::GetNextSamples(int16_t sample_buffer[][2], double & centerFr
     status = bladerf_sync_rx(this->m_dev,
                              sample_buffer,
                              this->m_sampleCount,
-                             &metadata,
+                             &metadata2,
                              0);
                              
-    // fprintf(stderr, " 0x%016lx\n", metadata.timestamp);
+    fprintf(stderr, " 0x%016lx\n", metadata2.timestamp);
     HANDLE_ERROR("Failed to receive samples at %u Hz: %%s\n", 
                  this->m_frequencies[this->m_frequencyIndex]);
-    if (metadata.timestamp >= metadata2.timestamp) {
+    if (metadata2.timestamp >= metadata.timestamp) {
       break;
     }
   }
-  this->m_frequencyIndex = (this->m_frequencyIndex + 1) % this->m_numFrequencies;
   return true;
 }
 

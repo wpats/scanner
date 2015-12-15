@@ -15,12 +15,7 @@ B210Source::B210Source(std::string args,
                        uint32_t sampleCount, 
                        double startFrequency, 
                        double stopFrequency)
-  : SignalSource(true),
-    m_sampleRate(sampleRate),
-    m_sampleCount(sampleCount),
-    m_startFrequency(startFrequency),
-    m_stopFrequency(stopFrequency),
-    m_currentFrequency(startFrequency),
+  : SignalSource(sampleRate, sampleCount, startFrequency, stopFrequency),
     m_verbose(false)
 {
   this->m_frequencyIncrement = sampleRate;
@@ -68,14 +63,15 @@ B210Source::~B210Source()
 
 }
 
-void B210Source::Retune()
+double B210Source::Retune()
 {
+  double currentFrequency = this->GetNextFrequency();
   //advanced tuning with tune_request_t uhd::tune_request_t
-  uhd::tune_request_t tune_req(this->m_currentFrequency, 0);
+  uhd::tune_request_t tune_req(currentFrequency, 0);
   tune_req.args = uhd::device_addr_t("mode_n=integer"); //to use Int-N tuning
   //fill in any additional/optional tune request fields...
   tune_req.dsp_freq_policy = uhd::tune_request_t::POLICY_AUTO;
-  tune_req.rf_freq = this->m_currentFrequency;
+  tune_req.rf_freq = currentFrequency;
   tune_req.rf_freq_policy = uhd::tune_request_t::POLICY_MANUAL;
   this->StartTimer();
   this->m_usrp->set_rx_freq(tune_req);
@@ -86,29 +82,15 @@ void B210Source::Retune()
   this->StopTimer();
   this->AddRetuneTime();
   if (this->m_verbose) {
-    std::cout << "Tuned to " << this->m_currentFrequency << std::endl;
+    std::cout << "Tuned to " << currentFrequency << std::endl;
   }
-}
-
-void B210Source::UpdateCurrentFrequency()
-{
-  double frequency = this->m_currentFrequency;
-  if (frequency == this->m_stopFrequency) {
-    frequency = this->m_startFrequency;
-  } else {
-    frequency = this->m_currentFrequency + m_frequencyIncrement;
-    if (frequency > this->m_stopFrequency) {
-      frequency = this->m_stopFrequency;
-    }
-  }
-  this->m_currentFrequency = frequency;
+  return currentFrequency;
 }
 
 bool B210Source::GetNextSamples(int16_t sample_buffer[][2], double & centerFrequency)
 {
   // Retune and set the centerFrequency.
-  this->Retune();
-  centerFrequency = this->m_currentFrequency;
+  centerFrequency = this->Retune();
 
   //setup streaming
   uhd::stream_cmd_t stream_cmd(uhd::stream_cmd_t::STREAM_MODE_NUM_SAMPS_AND_DONE);
@@ -159,6 +141,5 @@ bool B210Source::GetNextSamples(int16_t sample_buffer[][2], double & centerFrequ
     std::cout << "Done!" << std::endl;
   }
   
-  this->UpdateCurrentFrequency();
   return true;
 }

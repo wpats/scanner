@@ -33,9 +33,7 @@ AirspySource::AirspySource(std::string args,
                            uint32_t sampleCount, 
                            double startFrequency, 
                            double stopFrequency)
-  : m_sampleRate(sampleRate),
-    m_sampleCount(sampleCount),
-    m_frequencyIndex(0),
+  : SignalSource(sampleRate, sampleCount, startFrequency, stopFrequency),
     m_dev(nullptr),
     m_streamingState(Illegal)
 {
@@ -82,6 +80,9 @@ AirspySource::AirspySource(std::string args,
   */
   airspy_set_mixer_agc(this->m_dev, 0);
 
+  status = airspy_set_linearity_gain(this->m_dev, 12);
+  HANDLE_ERROR("Failed to set linearity gain string: %%s\n");
+
   /* Parameter value shall be 0=Disable BiasT or 1=Enable BiasT */
   airspy_set_rf_bias(this->m_dev, 0);
 
@@ -92,13 +93,6 @@ AirspySource::AirspySource(std::string args,
 
   status = airspy_set_sample_type(this->m_dev, AIRSPY_SAMPLE_INT16_IQ);
   HANDLE_ERROR("Failed to set sample type: %%s\n");
-
-  this->m_numFrequencies = (stopFrequency - startFrequency)/sampleRate + 1;
-  this->m_frequencies = new uint32_t[this->m_numFrequencies];
-  for (uint32_t i = 0; i < this->m_numFrequencies; i++) {
-    this->m_frequencies[i] = startFrequency + i * sampleRate;
-    // fprintf(stderr, "Frequency %d: %u\n", i, this->m_frequencies[i]);
-  }
 
   double centerFrequency = this->m_frequencies[this->m_frequencyIndex];
   status = airspy_set_freq(this->m_dev, centerFrequency);
@@ -184,7 +178,7 @@ bool AirspySource::GetNextSamples(int16_t sample_buffer[][2], double & centerFre
    * timestamp counter value */
   int status;
   uint32_t delta = 100;
-  centerFrequency = this->m_frequencies[this->m_frequencyIndex];
+  centerFrequency = this->GetNextFrequency();
   status = airspy_set_freq(this->m_dev, centerFrequency);
   HANDLE_ERROR("Failed to tune  %u Hz: %%s\n", 
                centerFrequency);
@@ -198,6 +192,5 @@ bool AirspySource::GetNextSamples(int16_t sample_buffer[][2], double & centerFre
   while (this->m_streamingState != GotSamples) {
   }
 
-  this->m_frequencyIndex = (this->m_frequencyIndex + 1) % this->m_numFrequencies;
   return true;
 }

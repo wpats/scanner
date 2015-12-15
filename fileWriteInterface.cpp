@@ -29,23 +29,29 @@ FileWriteProcessInterface::~FileWriteProcessInterface()
 void FileWriteProcessInterface::Begin(uint64_t sequenceId, uint32_t totalItemCount)
 {
   this->m_expectedCount = totalItemCount;
-  printf("Begin writing [%lu, %u]...", sequenceId, totalItemCount);
 }
 
 void FileWriteProcessInterface::Process(const fftwf_complex * items, uint32_t count)
 {
-  this->m_count += count;
+  size_t written = fwrite(items, 
+                          sizeof(fftwf_complex), 
+                          count, 
+                          this->m_outFile);
+  if (written != count) {
+    fprintf(stderr, "Error writing to file\n");
+    exit(1);
+  }
+  this->m_count += written;
+
+#if 0
   for (uint32_t i = 0; i < count; i++) {
     fprintf(this->m_outFile, "%f, %f\n", items[i][0], items[i][1]);
   }
+#endif
 }
     
 void FileWriteProcessInterface::End()
 {
-  if (this->m_expectedCount == this->m_count) {
-    printf("OK\n");
-  } else {
-    printf("Got %u items, expected %u\n", this->m_count, this->m_expectedCount);
-  }
+  assert(this->m_expectedCount == this->m_count);
   this->m_count = this->m_expectedCount = 0;
 }

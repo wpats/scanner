@@ -323,7 +323,7 @@ uint32_t CircularBuffer<ElementType, BufferSize>::AddRequest(uint64_t sequenceId
     }
   }
   this->m_requests.push_front(std::make_pair(sequenceId, count));
-  printf("Adding request [%lu, %u]\n", sequenceId, count);
+  // printf("Adding request [%lu, %u]\n", sequenceId, count);
   return count;
 }
 

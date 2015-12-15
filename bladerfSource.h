@@ -1,4 +1,9 @@
 /* The RX and TX modules are configured independently for these parameters */
+
+#pragma once
+
+#include <libbladeRF.h>
+
 struct module_config {
   bladerf_module module;
   unsigned int frequency;
@@ -12,13 +17,8 @@ struct module_config {
 
 class BladerfSource : public SignalSource
 {
-  uint32_t m_sampleRate;
-  uint32_t m_sampleCount;
   struct bladerf * m_dev;
-  uint32_t m_numFrequencies;
-  uint32_t * m_frequencies;
   struct bladerf_quick_tune * m_quickTunes;
-  uint32_t m_frequencyIndex;
   int configure_module(struct bladerf *dev, struct module_config *c);
   bool populate_quick_tunes();
   void handle_error(struct bladerf * dev, int status, const char * format, ...);

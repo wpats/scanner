@@ -2,19 +2,19 @@
 #include <string.h>
 #include <stdio.h>
 #include <time.h>
-#include <libbladeRF.h>
-#include <uhd/usrp/multi_usrp.hpp>
-#include <libairspy/airspy.h>
 #include <math.h>
 #include <iostream>
 #include <limits>
 #include <boost/program_options.hpp>
 #include "fft.h"
-#include "process.h"
 #include "signalSource.h"
+#include "process.h"
 #include "bladerfSource.h"
+#ifdef INCLUDE_B210
 #include "b210Source.h"
+#endif
 #include "airspySource.h"
+#include "sdrplaySource.h"
 #include "scan.h"
 
 
@@ -34,21 +34,27 @@ int main(int argc, char *argv[])
   struct bladerf *dev = NULL;
   struct bladerf_devinfo dev_info;
   uint32_t sample_rate = 8000000;
-  const uint32_t num_samples = 8192;
-  int16_t sample_buffer[num_samples][2];
   float threshold;
   double startFrequency;
   double stopFrequency;
   std::string args;
+  std::string outFileName;
   uint32_t num_iterations;
+  uint32_t dcIgnoreWindow = 0;
+  uint32_t sampleCount;
+  bool fftoff;
   namespace po = boost::program_options;
 
   po::options_description desc("Program options");
   desc.add_options()
     ("help", "print help message")
     ("args", po::value<std::string>(&args)->default_value(""), "device args")
-    ("n_iterations,n", po::value<uint32_t>(&num_iterations)->default_value(10), "Number of iterations")
-    ("sample_rate,s", po::value<uint32_t>(&sample_rate)->default_value(8000000), "Sample rate")
+    ("count,c", po::value<uint32_t>(&sampleCount)->default_value(8192), "sample count")
+    ("dcwindow,d", po::value<uint32_t>(&dcIgnoreWindow)->default_value(0), "ignore window around DC")
+    ("niterations,n", po::value<uint32_t>(&num_iterations)->default_value(10), "Number of iterations")
+    ("fftoff,f", po::value<bool>(&fftoff)->default_value(false), "Do FFT and threshold detection")
+    ("outfile,o", po::value<std::string>(&outFileName)->default_value(""), "Output file to record samples")
+    ("samplerate,s", po::value<uint32_t>(&sample_rate)->default_value(8000000), "Sample rate")
     ("threshold,t", po::value<float>(&threshold)->default_value(10.0), "Threshold");
 
   // Hidden options.
@@ -77,39 +83,60 @@ int main(int argc, char *argv[])
     return 1;
   }
 
+  int16_t sample_buffer[sampleCount][2];
   SignalSource * source = nullptr;
   uint32_t enob = 12;
   bool correctDCOffset = false;
-  bool ignoreCenterFrequency = false;
   if (args.find("bladerf") != std::string::npos) {
     source = new BladerfSource(args,
                                sample_rate, 
-                               num_samples, 
+                               sampleCount, 
                                startFrequency, 
                                stopFrequency);
     correctDCOffset = true;
-    ignoreCenterFrequency = true;
+    if (dcIgnoreWindow == 0) {
+      dcIgnoreWindow = 5;
+    }
+#ifdef INCLUDE_B210
   } else if (args.find("b200") != std::string::npos) {
     source = new B210Source(args, 
       sample_rate, 
-      num_samples, 
+      sampleCount, 
       startFrequency, 
       stopFrequency);
-  } else {
+#endif
+  } else if (args.find("airspy") != std::string::npos) {
     source = new AirspySource(args, 
       sample_rate, 
-      num_samples, 
+      sampleCount, 
       startFrequency, 
       stopFrequency);
+    correctDCOffset = true;
+    if (dcIgnoreWindow == 0) {
+      dcIgnoreWindow = 24;
+    }
+  } else if (args.find("sdrplay") != std::string::npos) {
+    source = new SdrplaySource(args, 
+      sample_rate, 
+      sampleCount, 
+      startFrequency, 
+      stopFrequency);
+    correctDCOffset = true;
+  } else {
+    std::cout << "Missing source type argument" << std::endl;
+    std::cout << desc << "\n";
+    return 1;
   }
 
-  ProcessSamples process(num_samples, 
+  ProcessSamples process(sampleCount, 
                          sample_rate,
                          enob,
                          threshold, 
                          gr::fft::window::WIN_BLACKMAN_HARRIS,
                          correctDCOffset, 
-                         ignoreCenterFrequency);
+                         dcIgnoreWindow,
+                         outFileName,
+                         !fftoff);
 
   source->Start();
 
@@ -117,7 +144,9 @@ int main(int argc, char *argv[])
   clock_gettime(CLOCK_REALTIME, &start);
   double startIter = start.tv_sec*1000.0 + start.tv_nsec/1e6;
 
+#if 0
   double previousFrequency = startFrequency;
+  uint32_t frequencyCount = source->GetFrequencyCount();
   for (uint32_t i = 0; i < num_iterations;) {
     double centerFrequency;
     if (!source->GetNextSamples(sample_buffer, centerFrequency)) {
@@ -127,9 +156,13 @@ int main(int argc, char *argv[])
     source->WriteTimingData();
     // Process samples
     process.Run(sample_buffer, centerFrequency);
+    process.WriteSamples(sampleCount);
+
     // Detect complete scan.
-    if (centerFrequency < previousFrequency) {
+    if (--frequencyCount == 0) {
+      frequencyCount = source->GetFrequencyCount();
       i++;
+
 #if 1
       // Calculate and report time.
       if (i % 1 == 0) {
@@ -144,6 +177,9 @@ int main(int argc, char *argv[])
     }
     previousFrequency = centerFrequency;
   }
+#else
+  process.RecordSamples(source, sampleCount * num_iterations, 0.0);
+#endif
 
   source->Stop();
   // Calculate and report time.
