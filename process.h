@@ -23,11 +23,22 @@ class FFTWindow {
 
 class ProcessSamples {
 
+ public:
+  enum Mode {
+    Illegal,
+    TimeDomain,
+    FrequencyDomain
+  };
+    
+ private:
   void process_fft(fftwf_complex * fft_data, 
                    uint32_t center_frequency);
   void WriteToFile(const char * fileName, fftwf_complex * data);
-  void WriteSamplesToFile(std::string fileName, uint32_t count);
-  std::string GenerateFileName(time_t startTime, double_t centerFrequency);
+  void WriteSamplesToFile(uint32_t count, double centerFrequency);
+  std::string GenerateFileName(std::string fileNameBase, 
+                               time_t startTime, 
+                               double_t centerFrequency);
+  void DoTimeDomainThresholding(fftwf_complex * inputSamples, double centerFrequency);
 
   uint32_t m_sampleCount;
   uint32_t m_sampleRate;
@@ -36,7 +47,8 @@ class ProcessSamples {
   bool m_correctDCOffset;
   bool m_dcIgnoreWindow;
   bool m_writeSamples;
-  bool m_doFFT;
+  Mode m_mode;
+  std::string m_fileNameBase;
   float m_threshold;
   FFT m_fft;
   FFTWindow m_fftWindow;
@@ -50,8 +62,9 @@ class ProcessSamples {
                  float threshold, 
                  gr::fft::window::win_type windowType,
                  bool correctDCOffset,
-                 uint32_t dcIgnoreWindow = 0,
-                 bool doFFT = true);
+                 Mode mode,
+                 std::string fileNameBase = "",
+                 uint32_t dcIgnoreWindow = 0);
   ~ProcessSamples();
   void Run(int16_t sample_buffer[][2], uint32_t centerFrequency);
   void RecordSamples(SignalSource * signalSource,

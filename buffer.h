@@ -9,7 +9,15 @@
 template <typename ElementType>
 class ProcessInterface
 {
+  bool m_doMergeRequests;
  public:
+  ProcessInterface(bool doMergeRequests)
+    : m_doMergeRequests(doMergeRequests)
+  {}
+  bool GetDoMergeRequests()
+  {
+    return this->m_doMergeRequests;
+  }
   virtual void Begin(uint64_t sequenceId, uint32_t totalItemCount) = 0;
   virtual void Process(const ElementType * items, uint32_t count) = 0;
   virtual void End() = 0;

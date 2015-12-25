@@ -60,8 +60,9 @@ ProcessSamples::ProcessSamples(uint32_t numSamples,
                                float threshold,
                                gr::fft::window::win_type windowType,
                                bool correctDCOffset,
-                               uint32_t dcIgnoreWindow,
-                               bool doFFT)
+                               Mode mode,
+                               std::string fileNameBase,
+                               uint32_t dcIgnoreWindow)
   : m_sampleCount(numSamples),
     m_sampleRate(sampleRate),
     m_enob(enob),
@@ -71,8 +72,11 @@ ProcessSamples::ProcessSamples(uint32_t numSamples,
     m_correctDCOffset(correctDCOffset),
     m_dcIgnoreWindow(dcIgnoreWindow),
     m_fft(numSamples),
-    m_doFFT(doFFT)
+    m_mode(mode),
+    m_sampleBuffer(nullptr),
+    m_fileNameBase(fileNameBase)
 {
+  assert(mode > Illegal && mode <= FrequencyDomain);
   m_inputSamples = reinterpret_cast<fftwf_complex *>(fftwf_alloc_complex(numSamples));
   m_fftOutputBuffer = reinterpret_cast<fftwf_complex *>(fftwf_alloc_complex(numSamples));
 }
@@ -103,24 +107,27 @@ void ProcessSamples::Run(int16_t sample_buffer[][2], uint32_t centerFrequency)
                                           this->m_sampleCount,
                                           this->m_enob,
                                           this->m_correctDCOffset);
-  if (this->m_doFFT) {
+  if (this->m_mode == FrequencyDomain) {
     this->m_fftWindow.apply(this->m_inputSamples);
     this->m_fft.process(this->m_fftOutputBuffer, this->m_inputSamples);
     this->process_fft(this->m_fftOutputBuffer, centerFrequency);
   }
 }
 
-std::string ProcessSamples::GenerateFileName(time_t startTime, 
+std::string ProcessSamples::GenerateFileName(std::string fileNameBase, 
+                                             time_t startTime, 
                                              double_t centerFrequency)
 {
   char buffer[256];
-  const char timeformat[] = "%Y%m%d-%T";
+  const char timeformat[] = "-%Y%m%d-%T";
   struct tm * timeStruct = localtime(&startTime);
   if (timeStruct == nullptr) {
     perror("localtime");
     exit(1);
   }
-  if (strftime(buffer, sizeof(buffer), timeformat, timeStruct) == 0) {
+  strcpy(buffer, fileNameBase.c_str());
+  uint32_t length = strlen(buffer);
+  if (strftime(buffer+length, sizeof(buffer)-length, timeformat, timeStruct) == 0) {
     fprintf(stderr, "strftime returned 0");
     exit(1);
   }
@@ -128,10 +135,13 @@ std::string ProcessSamples::GenerateFileName(time_t startTime,
   return std::string(buffer);
 }
 
-void ProcessSamples::WriteSamplesToFile(std::string fileName, uint32_t count)
+void ProcessSamples::WriteSamplesToFile(uint32_t count, double centerFrequency)
 {
-  fprintf(stderr, "Writing to file %s\n", fileName.c_str());
-  FileWriteProcessInterface writeInterface(fileName.c_str());
+  assert(this->m_sampleBuffer != nullptr);
+  time_t startTime;
+  startTime = time(NULL);
+  std::string fileName = this->GenerateFileName(this->m_fileNameBase, startTime, centerFrequency);
+  this->m_sampleBuffer->WriteSamplesToFile(fileName, count);
 }
 
 void ProcessSamples::RecordSamples(SignalSource * signalSource, 
@@ -149,20 +159,45 @@ void ProcessSamples::RecordSamples(SignalSource * signalSource,
                                             this->m_enob,
                                             this->m_correctDCOffset);
     // Check for threshold.
-    std::string fileName = this->GenerateFileName(startTime, centerFrequency);
-    this->WriteSamplesToFile(fileName, this->m_sampleCount);
+    std::string fileName = this->GenerateFileName(this->m_fileNameBase, startTime, centerFrequency);
+    // this->WriteSamplesToFile(fileName, this->m_sampleCount);
    }
+}
+
+void ProcessSamples::DoTimeDomainThresholding(fftwf_complex * inputSamples, 
+                                              double centerFrequency)
+{
+  double log10 = log2(10);
+  for (uint32_t i = 0; i < this->m_sampleCount; i++) {
+    float re = inputSamples[i][0];
+    float im = inputSamples[i][1];
+    float mag = sqrt(re * re + im * im); // / this->m_sampleCount;
+    float magnitude = 10 * log2(mag) / log10;
+    if (magnitude > this->m_threshold) {
+      printf("Signal %f above threshold %f at frequency %.0f\n", 
+             magnitude, 
+             this->m_threshold,
+             centerFrequency);
+      this->WriteSamplesToFile(4 * this->m_sampleCount, centerFrequency);
+      return;
+    }
+  }
 }
 
 bool ProcessSamples::StartProcessing(SampleBuffer & sampleBuffer)
 {
   double centerFrequency;
   uint32_t i = 0;
+  this->m_sampleBuffer = &sampleBuffer;
   while (sampleBuffer.GetNextSamples(this->m_inputSamples, centerFrequency)) {
     // printf("Processing %d\n", i++);
-    this->m_fftWindow.apply(this->m_inputSamples);
-    this->m_fft.process(this->m_fftOutputBuffer, this->m_inputSamples);
-    this->process_fft(this->m_fftOutputBuffer, centerFrequency);
+    if (this->m_mode == TimeDomain) {
+      this->DoTimeDomainThresholding(this->m_inputSamples, centerFrequency);
+    } else if (this->m_mode == FrequencyDomain) {
+      this->m_fftWindow.apply(this->m_inputSamples);
+      this->m_fft.process(this->m_fftOutputBuffer, this->m_inputSamples);
+      this->process_fft(this->m_fftOutputBuffer, centerFrequency);
+    }
   }
   return true;
 }
@@ -224,11 +259,12 @@ void Utility::complex_to_magnitude(fftwf_complex * fft_data,
                                    float * magnitudes,
                                    uint32_t sampleCount)
 {
+  double log10 = log2(10);
   for (uint32_t i = 0; i < sampleCount; i++) {
     float re = fft_data[i][0];
     float im = fft_data[i][1];
     float mag = sqrt(re * re + im * im) / sampleCount;
-    magnitudes[i] = 10 * log2(mag) / log2(10);
+    magnitudes[i] = 10 * log2(mag) / log10;
   }
 }
 

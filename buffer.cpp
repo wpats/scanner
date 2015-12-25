@@ -350,7 +350,9 @@ uint32_t CircularBuffer<ElementType, BufferSize>::ProcessItems(uint64_t sequence
 {
   assert(sequenceId <= this->m_endSequenceId);
   count = std::min(count, this->GetItemCount());
-  count = this->AddRequest(sequenceId, count);
+  if (process->GetDoMergeRequests()) {
+    count = this->AddRequest(sequenceId, count);
+  }
   uint32_t returnCount = count;
   if (count == 0) {
     return 0;

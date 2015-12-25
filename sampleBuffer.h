@@ -40,6 +40,7 @@ public:
   void AppendSamples(fftwf_complex * floatComplexSamples,
                      double centerFrequency);
   bool GetNextSamples(fftwf_complex * outputBuffer, double & centerFrequency);
+  void WriteSamplesToFile(std::string fileName, uint32_t count);
   void SetIsDone();
   bool GetIsDone();
 };

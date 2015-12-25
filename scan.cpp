@@ -40,10 +40,10 @@ int main(int argc, char *argv[])
   double stopFrequency;
   std::string args;
   std::string outFileName;
+  std::string modeString;
   uint32_t num_iterations;
   uint32_t dcIgnoreWindow = 0;
   uint32_t sampleCount;
-  bool fftoff;
   namespace po = boost::program_options;
 
   po::options_description desc("Program options");
@@ -52,9 +52,9 @@ int main(int argc, char *argv[])
     ("args", po::value<std::string>(&args)->default_value(""), "device args")
     ("count,c", po::value<uint32_t>(&sampleCount)->default_value(8192), "sample count")
     ("dcwindow,d", po::value<uint32_t>(&dcIgnoreWindow)->default_value(0), "ignore window around DC")
+    ("mode,m", po::value<std::string>(&modeString)->default_value("time"), "processing mode 'time' or 'frequency'")
     ("niterations,n", po::value<uint32_t>(&num_iterations)->default_value(10), "Number of iterations")
-    ("fftoff,f", po::value<bool>(&fftoff)->default_value(false), "Do FFT and threshold detection")
-    ("outfile,o", po::value<std::string>(&outFileName)->default_value(""), "Output file to record samples")
+    ("outfile,o", po::value<std::string>(&outFileName)->default_value(""), "File name base to record samples")
     ("samplerate,s", po::value<uint32_t>(&sample_rate)->default_value(8000000), "Sample rate")
     ("threshold,t", po::value<float>(&threshold)->default_value(10.0), "Threshold");
 
@@ -79,7 +79,13 @@ int main(int argc, char *argv[])
             vm);
   po::notify(vm);
 
-  if (vm.count("help")) {
+  ProcessSamples::Mode mode = ProcessSamples::Illegal;
+  if (modeString.find("time") != std::string::npos) {
+    mode = ProcessSamples::TimeDomain;
+  } else if (modeString.find("frequency") != std::string::npos) {
+    mode = ProcessSamples::FrequencyDomain;
+  }
+  if (vm.count("help") || mode == ProcessSamples::Illegal) {
     std::cout << desc << "\n";
     return 1;
   }
@@ -136,8 +142,9 @@ int main(int argc, char *argv[])
                          threshold, 
                          gr::fft::window::WIN_BLACKMAN_HARRIS,
                          correctDCOffset, 
-                         dcIgnoreWindow,
-                         !fftoff);
+                         mode,
+                         outFileName,
+                         dcIgnoreWindow);
   SampleBuffer sampleBuffer(kind, enob, sampleCount);
   source->Start();
 

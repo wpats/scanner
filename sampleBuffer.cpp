@@ -26,6 +26,13 @@ void SampleBuffer::AppendHelper(double centerFrequency)
   this->m_queue.push_back(std::make_pair(sequenceId, centerFrequency));
 }
 
+void SampleBuffer::WriteSamplesToFile(std::string fileName, uint32_t count)
+{
+  fprintf(stderr, "Writing to file %s\n", fileName.c_str());
+  FileWriteProcessInterface writeInterface(fileName.c_str());
+  this->m_circularBuffer.ProcessEndItems(count, &writeInterface);
+}
+
 void SampleBuffer::SetIsDone()
 {
   assert(!this->m_done);

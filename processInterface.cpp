@@ -7,7 +7,8 @@
 #include "buffer.h"
 
 FileWriteProcessInterface::FileWriteProcessInterface(const char * outFileName)
-  : m_count(0),
+  : ProcessInterface(true),
+    m_count(0),
     m_expectedCount(0)
 {
   if (outFileName != NULL) {
@@ -60,7 +61,8 @@ void FileWriteProcessInterface::End()
 // CopyBufferProcessInterface methods.
 //
 CopyBufferProcessInterface::CopyBufferProcessInterface(fftwf_complex * outputBuffer)
-  : m_count(0),
+  : ProcessInterface(false),
+    m_count(0),
     m_expectedCount(0),
     m_outputBuffer(outputBuffer)
 {
