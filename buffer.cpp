@@ -25,7 +25,6 @@ CircularBuffer<ElementType, BufferSize>::CircularBuffer(uint32_t bufferCount, co
     m_isEmpty(true),
     m_outFileName(outFileName),
     m_outFile(nullptr)
-    //m_thread(nullptr)
 {
   // Having a single buffer means you need to handle corner cases.
   assert(bufferCount > 1);
@@ -36,42 +35,14 @@ CircularBuffer<ElementType, BufferSize>::CircularBuffer(uint32_t bufferCount, co
     this->m_outFile = fopen(outFileName, "w");
     if (this->m_outFile == nullptr) {
       fprintf(stderr, "Error opening file '%s'\n", outFileName);
-    } else {
-      this->MyStart();
+      exit(1);
     }
   }
 }
+
 template <typename ElementType, uint32_t BufferSize> 
 CircularBuffer<ElementType, BufferSize>::~CircularBuffer()
 {
-}
-
-template <typename ElementType, uint32_t BufferSize> 
-bool CircularBuffer<ElementType, BufferSize>::MyStart()
-{
-  // NOTE: d_finished should be something explicitely thread safe. But since
-  // nothing breaks on concurrent access, I'll just leave it as bool.
-  printf("Starting thread...\n");
-  this->m_finished = false;
-  // this->m_thread = std::move(boost::make_thread(boost::bind(&CircularBuffer<ElementType, BufferSize>::MyThreadFunction, this)));
-  return true;
-}
-
-template <typename ElementType, uint32_t BufferSize> 
-bool CircularBuffer<ElementType, BufferSize>::MyStop()
-{
-  printf("Stopping thread...\n");
-  // Shut down the thread
-  this->m_finished = true;
-  // this->m_thread.interrupt();
-  // this->m_thread.join();
-  return true;
-}
-
-template <typename ElementType, uint32_t BufferSize> 
-void CircularBuffer<ElementType, BufferSize>::MyThreadFunction()
-{
-
 }
 
 template <typename ElementType, uint32_t BufferSize> 
@@ -133,8 +104,8 @@ CircularBuffer<ElementType, BufferSize>::Iterator::operator-(uint32_t count)
       result.m_bufferIndex = this->m_container->PreviousIndex(result.m_bufferIndex);
     }
   }
-  assert(check == result);
-  return result;
+  // assert(check == result);
+  return check;
 }
 
 template <typename ElementType, uint32_t BufferSize> 
@@ -183,6 +154,12 @@ template <typename ElementType, uint32_t BufferSize>
 bool CircularBuffer<ElementType, BufferSize>::IsFull() const
 {
   return !this->m_isEmpty && this->m_bufferBegin == this->m_bufferEnd;
+}
+
+template <typename ElementType, uint32_t BufferSize> 
+bool CircularBuffer<ElementType, BufferSize>::IsEmpty() const
+{
+  return this->m_isEmpty;
 }
 
 
@@ -273,8 +250,13 @@ template <typename ElementType, uint32_t BufferSize>
 uint32_t CircularBuffer<ElementType, BufferSize>::GetValidItemsAt(Iterator iter) const
 {
   uint32_t itemIndexEnd;
-  if (this->m_bufferEnd.m_bufferIndex == iter.m_bufferIndex) {
-    itemIndexEnd = this->m_bufferEnd.m_itemIndex;
+  if (this->m_bufferEnd.m_bufferIndex == iter.m_bufferIndex
+      && iter.m_itemIndex <= this->m_bufferEnd.m_itemIndex) {
+    if (this->m_bufferEnd == this->m_bufferBegin) {
+      itemIndexEnd = BufferSize;
+    } else {
+      itemIndexEnd = this->m_bufferEnd.m_itemIndex;
+    }
   } else {
     itemIndexEnd = BufferSize;
   }
@@ -338,27 +320,55 @@ bool CircularBuffer<ElementType, BufferSize>::AppendItems(const ElementType * it
   }
 
 }
+
+template <typename ElementType, uint32_t BufferSize> 
+uint64_t CircularBuffer<ElementType, BufferSize>::GetEndSequenceId()
+{
+  return this->m_endSequenceId;
+}
     
 template <typename ElementType, uint32_t BufferSize> 
-bool CircularBuffer<ElementType, BufferSize>::ProcessItems(uint32_t count, ProcessInterface<ElementType> * process)
+uint32_t CircularBuffer<ElementType, BufferSize>::ProcessEndItems(uint32_t count, 
+                                                                  ProcessInterface<ElementType> * process)
 {
   count = std::min(count, this->GetItemCount());
-  count = this->AddRequest(this->m_endSequenceId - count, count);
+  return this->ProcessItems(this->m_endSequenceId - count, count, process);
+}
+
+template <typename ElementType, uint32_t BufferSize> 
+uint32_t CircularBuffer<ElementType, BufferSize>::ProcessBeginItems(uint32_t count, 
+                                                                    ProcessInterface<ElementType> * process)
+{
+  count = std::min(count, this->GetItemCount());
+  return this->ProcessItems(this->m_endSequenceId - this->GetItemCount(), count, process);
+}
+
+template <typename ElementType, uint32_t BufferSize> 
+uint32_t CircularBuffer<ElementType, BufferSize>::ProcessItems(uint64_t sequenceId, 
+                                                               uint32_t count, 
+                                                               ProcessInterface<ElementType> * process)
+{
+  assert(sequenceId <= this->m_endSequenceId);
+  count = std::min(count, this->GetItemCount());
+  count = this->AddRequest(sequenceId, count);
+  uint32_t returnCount = count;
   if (count == 0) {
-    return false;
+    return 0;
   }
-  process->Begin(this->m_endSequenceId - count, count);
-  Iterator iter = this->m_bufferEnd - count;
+  process->Begin(sequenceId, count);
+  uint32_t countFromEnd = this->m_endSequenceId - sequenceId;
+  assert(countFromEnd <= this->GetItemCount());
+  Iterator iter = this->m_bufferEnd - countFromEnd;
   while (count > 0) {
     uint32_t bufferItemCount;
     ElementType * source = this->GetItemPointer(iter);
-    bufferItemCount = this->GetValidItemsAt(iter);
+    bufferItemCount = std::min(count, this->GetValidItemsAt(iter));
     process->Process(source, bufferItemCount);
     count -= bufferItemCount;
     iter = iter + bufferItemCount;
   }
   process->End();
-  return true;
+  return returnCount;
 }
 
 #ifdef INCLUDE_TEST_MAIN

@@ -8,6 +8,7 @@
 #include <stdarg.h>
 #include <cassert>
 #include <mirsdrapi-rsp.h>
+#include "sampleBuffer.h"
 #include "signalSource.h"
 #include "sdrplaySource.h"
 
@@ -54,7 +55,8 @@ SdrplaySource::SdrplaySource(std::string args,
     m_samplesPerPacket(0),
     m_firstSampleNum(0),
     m_sample_buffer_i(nullptr),
-    m_sample_buffer_q(nullptr)
+    m_sample_buffer_q(nullptr),
+    m_bufferSize(0)
 {
   mir_sdr_ErrT status;
   int gRdB = 60;
@@ -67,18 +69,19 @@ SdrplaySource::SdrplaySource(std::string args,
     exit(1);
   }
 
-  double centerFrequency = this->m_frequencies[this->m_frequencyIndex]/1e6;
+  double centerFrequency = this->GetCurrentFrequency();
   // Initialise API and hardware  
   status = mir_sdr_Init(gRdB, 
                         double(sampleRate/1e6),
-                        centerFrequency,
+                        centerFrequency/1e6,
                         mir_sdr_BW_8_000,
                         mir_sdr_IF_Zero,
                         &this->m_samplesPerPacket);
-  HANDLE_ERROR("Failed to initialize Sdrplay device: %%s\n");
+  HANDLE_ERROR("Failed to initialize Sdrplay device %.0f: %%s\n", centerFrequency);
 
 
-  uint32_t bufferSize = this->m_samplesPerPacket * (ceil(double(sampleCount)/this->m_samplesPerPacket));
+  uint32_t bufferSize = this->m_bufferSize = 
+    this->m_samplesPerPacket * (ceil(double(sampleCount)/this->m_samplesPerPacket));
  
   this->m_sample_buffer_i = new int16_t[bufferSize];
   this->m_sample_buffer_q = new int16_t[bufferSize];
@@ -94,16 +97,11 @@ SdrplaySource::~SdrplaySource()
   HANDLE_ERROR("Failed to uninitialize Sdrplay device: %%s\n");
 }
 
-bool SdrplaySource::GetNextSamples(int16_t sample_buffer[][2], double & centerFrequency)
+bool SdrplaySource::GetNextSamples(SampleBuffer *  sampleBuffer, double & centerFrequency)
 {
   mir_sdr_ErrT status;
 
-  centerFrequency = this->GetNextFrequency();
-  if (this->GetFrequencyCount() > 1) {
-    status = mir_sdr_SetRf(centerFrequency, 1, 0);
-    HANDLE_ERROR("Failed to tune  %f Hz: %%s\n", 
-                 centerFrequency);
-  }
+  centerFrequency = this->GetCurrentFrequency();
 
   /* ... Handle signals at current frequency ... */
   for (uint32_t count = 0; 
@@ -118,13 +116,70 @@ bool SdrplaySource::GetNextSamples(int16_t sample_buffer[][2], double & centerFr
                                  &grChanged,
                                  &rfChanged,
                                  &fsChanged);
-    HANDLE_ERROR("Error receiving samples at %f[%u] : %%s\n", 
+    HANDLE_ERROR("Error receiving samples at %.0f[%u] : %%s\n", 
                  centerFrequency,
                  count);
   }
-  for (uint32_t i = 0; i < this->m_sampleCount; i++) {
-    sample_buffer[i][0] = this->m_sample_buffer_i[i];
-    sample_buffer[i][1] = this->m_sample_buffer_q[i];
+  double nextFrequency = this->GetNextFrequency();
+  if (this->GetFrequencyCount() > 1) {
+    this->Retune(nextFrequency);
   }
+  this->m_sampleBuffer->AppendSamples(this->m_sample_buffer_i, 
+                                      this->m_sample_buffer_q,
+                                      centerFrequency);
   return true;
+}
+
+bool SdrplaySource::StartStreaming(uint32_t numIterations, SampleBuffer & sampleBuffer)
+{
+  this->m_iterationCount = numIterations;
+  this->m_sampleBuffer = &sampleBuffer;
+  auto result = this->StartThread();
+  return result;
+}
+
+void SdrplaySource::ThreadWorker()
+{
+  mir_sdr_ErrT status;
+
+  while (this->GetIterationCount() > 0) {
+    /* ... Handle signals at current frequency ... */
+    double centerFrequency = this->GetCurrentFrequency();
+    for (uint32_t count = 0; 
+         count < this->m_sampleCount; 
+         count += this->m_samplesPerPacket) {
+      int grChanged = 0;
+      int rfChanged = 0;
+      int fsChanged = 0;
+      status =  mir_sdr_ReadPacket(&this->m_sample_buffer_i[count],
+                                   &this->m_sample_buffer_q[count],
+                                   &this->m_firstSampleNum,
+                                   &grChanged,
+                                   &rfChanged,
+                                   &fsChanged);
+      HANDLE_ERROR("Error receiving samples at %.0f[%u] : %%s\n", 
+                   centerFrequency,
+                   count);
+    }
+    double nextFrequency = this->GetNextFrequency();
+    if (this->GetFrequencyCount() > 1) {
+      this->Retune(nextFrequency);
+    }
+    this->m_sampleBuffer->AppendSamples(this->m_sample_buffer_i, 
+                                        this->m_sample_buffer_q,
+                                        centerFrequency);
+  }
+  return;
+}
+
+double SdrplaySource::Retune(double centerFrequency)
+{
+  mir_sdr_ErrT status;
+  printf("Tuning to %.0f Hz\n", centerFrequency);
+  status = mir_sdr_ResetUpdateFlags(0, 1, 0);
+  HANDLE_ERROR("Failed to reset rf update: %%s\n");
+  status = mir_sdr_SetRf(centerFrequency, 1, 0);
+  HANDLE_ERROR("Failed to tune to %.0f Hz: %%s\n", 
+               centerFrequency);
+  return centerFrequency;
 }

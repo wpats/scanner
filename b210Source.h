@@ -10,8 +10,6 @@ class B210Source : public SignalSource
   double m_frequencyIncrement;
   bool m_verbose;
 
-  double Retune();
-
  public:
   B210Source(std::string args,
              uint32_t sampleRate, 
@@ -19,6 +17,9 @@ class B210Source : public SignalSource
              double startFrequency, 
              double stopFrequency);
   virtual ~B210Source();
-  virtual bool GetNextSamples(int16_t sample_buffer[][2], double & centerFrequency);
+  virtual bool GetNextSamples(SampleBuffer * sampleBuffer, double & centerFrequency);
+  virtual bool StartStreaming(uint32_t numIterations, SampleBuffer & sampleBuffer);
+  virtual void ThreadWorker();
+  virtual double Retune(double frequency);
 };
 

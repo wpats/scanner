@@ -1,6 +1,7 @@
 #include <math.h>
 #include <time.h>
 #include <stdio.h>
+#include "sampleBuffer.h"
 #include "signalSource.h"
 
 SignalSource::SignalSource(uint32_t sampleRate,
@@ -13,6 +14,9 @@ SignalSource::SignalSource(uint32_t sampleRate,
     m_startFrequency(startFrequency),
     m_stopFrequency(stopFrequency),
     m_frequencyIndex(0),
+    m_iterationCount(0),
+    m_thread(nullptr),
+    m_finished(false),
     m_doTiming(doTiming),
     m_retuneTimeIndex(0),
     m_getSamplesTimeIndex(0),
@@ -23,7 +27,7 @@ SignalSource::SignalSource(uint32_t sampleRate,
   this->m_frequencies.resize(numFrequencies);
   for (uint32_t i = 0; i < numFrequencies; i++) {
     this->m_frequencies[i] = startFrequency + i * sampleRate + sampleRate/2;
-    fprintf(stderr, "Frequency %d: %f\n", i, this->m_frequencies[i]);
+    fprintf(stderr, "Frequency %d: %.0f\n", i, this->m_frequencies[i]);
   }
 }
 
@@ -38,7 +42,18 @@ bool SignalSource::Stop() {}
 double SignalSource::GetNextFrequency()
 {
   uint32_t index = this->m_frequencyIndex;
-  this->m_frequencyIndex = (this->m_frequencyIndex + 1) % this->m_frequencies.size();
+  this->m_frequencyIndex = (index + 1) % this->m_frequencies.size();
+  if (this->m_frequencyIndex == 0) {
+    if (this->m_iterationCount > 0) {
+      this->m_iterationCount--;
+    }
+  }
+  return this->GetCurrentFrequency();
+}
+
+double SignalSource::GetCurrentFrequency()
+{
+  uint32_t index = this->m_frequencyIndex;
   return this->m_frequencies[index];
 }
 
@@ -47,12 +62,52 @@ uint32_t SignalSource::GetFrequencyCount()
   return this->m_frequencies.size();
 }
 
+uint32_t SignalSource::GetIterationCount()
+{
+  return this->m_iterationCount;
+}
+
+bool SignalSource::StartThread()
+{
+  // NOTE: d_finished should be something explicitely thread safe. But since
+  // nothing breaks on concurrent access, I'll just leave it as bool.
+  printf("Starting thread...\n");
+  this->m_finished = false;
+  this->m_thread = std::unique_ptr<std::thread>(new std::thread(&SignalSource::ThreadWorkerHelper, 
+                                                                this));
+  return true;
+}
+
+bool SignalSource::StopThread()
+{
+  if (this->m_thread != nullptr) {
+    printf("Stopping thread...\n");
+    // Shut down the thread
+    this->m_finished = true;
+    this->m_thread->join();
+  }
+  return true;
+}
+
+void SignalSource::ThreadWorkerHelper()
+{
+  this->ThreadWorker();
+  this->m_sampleBuffer->SetIsDone();
+  this->m_sampleBuffer = nullptr;
+}
+
+void SignalSource::StopStreaming()
+{
+  this->StopThread();
+}
+
 void SignalSource::StartTimer()
 {
   if (this->m_doTiming) {
     clock_gettime(CLOCK_REALTIME, &this->m_start);
   }
 }
+
 void SignalSource::StopTimer()
 {
   if (this->m_doTiming) {
@@ -62,18 +117,21 @@ void SignalSource::StopTimer()
     this->m_elapsedTime = stopd - startd;
   }
 }
+
 void SignalSource::AddRetuneTime()
 {
   if (this->m_doTiming && this->m_retuneTimeIndex < s_maxIndex) {
     this->m_retuneTime[this->m_retuneTimeIndex++] = this->m_elapsedTime;
   }
 }
+
 void SignalSource::AddGetSamplesTime()
 {
   if (this->m_doTiming && this->m_getSamplesTimeIndex < s_maxIndex) {
     this->m_getSamplesTime[this->m_getSamplesTimeIndex++] = this->m_elapsedTime;
   }
 }
+
 void SignalSource::WriteTimingData()
 {
   if (this->m_doTiming && this->m_retuneTimeIndex >= s_maxIndex) {
@@ -87,3 +145,4 @@ void SignalSource::WriteTimingData()
     this->m_doTiming = false;
   }
 }
+

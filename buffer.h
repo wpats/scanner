@@ -3,8 +3,8 @@
 #pragma once
 
 #include <list>
+#include <vector>
 #include <cstdint>
-#include <boost/thread.hpp>
 
 template <typename ElementType>
 class ProcessInterface
@@ -53,8 +53,6 @@ template <typename ElementType, uint32_t BufferSize> class CircularBuffer
   Iterator m_bufferEnd;
   bool m_isEmpty;
   bool m_finished;
-  //boost::thread m_thread;
-  //boost::mutex m_mutex;
   const char * m_outFileName;
   FILE * m_outFile;
       
@@ -68,17 +66,18 @@ template <typename ElementType, uint32_t BufferSize> class CircularBuffer
   ElementType * GetItemPointer(Iterator iter);
   void UpdateBufferEnd(uint32_t itemCount);
   uint32_t AddRequest(uint64_t sequenceId, uint32_t count);
-  bool MyStart();
-  bool MyStop();
-  void MyThreadFunction();
  public:
   CircularBuffer(uint32_t bufferCount, const char * outFileName);
   ~CircularBuffer();
   uint32_t GetItemCount() const;
   uint32_t GetItemCapacity() const;
   bool IsFull() const;
+  bool IsEmpty() const;
   bool AppendItems(const ElementType * items, uint32_t count);
-  bool ProcessItems(uint32_t count, ProcessInterface<ElementType> * process);
+  uint32_t ProcessEndItems(uint32_t count, ProcessInterface<ElementType> * process);
+  uint32_t ProcessBeginItems(uint32_t count, ProcessInterface<ElementType> * process);
+  uint32_t ProcessItems(uint64_t sequenceId, uint32_t count, ProcessInterface<ElementType> * process);
+  uint64_t GetEndSequenceId();
 };
 
 #ifdef INCLUDE_TEST_MAIN
@@ -114,3 +113,16 @@ class FileWriteProcessInterface : public ProcessInterface<fftwf_complex>
 };
 
 #endif
+
+class CopyBufferProcessInterface : public ProcessInterface<fftwf_complex>
+{
+  uint32_t m_count;
+  uint32_t m_expectedCount;
+  fftwf_complex * m_outputBuffer;
+ public:
+  CopyBufferProcessInterface(fftwf_complex * outputBuffer);
+  ~CopyBufferProcessInterface();
+  void Begin(uint64_t sequenceId, uint32_t totalItemCount);
+  void Process(const fftwf_complex * items, uint32_t count);
+  void End();
+};

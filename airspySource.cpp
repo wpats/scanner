@@ -10,6 +10,7 @@
 #include <vector>
 #include <algorithm>
 #include <libairspy/airspy.h>
+#include "sampleBuffer.h"
 #include "signalSource.h"
 #include "airspySource.h"
 
@@ -95,11 +96,7 @@ AirspySource::AirspySource(std::string args,
   HANDLE_ERROR("Failed to set sample type: %%s\n");
 
   double centerFrequency = this->m_frequencies[this->m_frequencyIndex];
-  status = airspy_set_freq(this->m_dev, centerFrequency);
-  HANDLE_ERROR("Failed to tune  %u Hz: %%s\n", 
-               centerFrequency);
-  status = airspy_start_rx(this->m_dev, _airspy_rx_callback, (void *)this );
-  HANDLE_ERROR("Failed to start RX streaming at %u: %%s\n", centerFrequency);
+  this->Retune(centerFrequency);
 }
 
 AirspySource::~AirspySource()
@@ -111,6 +108,18 @@ AirspySource::~AirspySource()
     status = airspy_close(this->m_dev);
     HANDLE_ERROR("Error closing airspy: %%s\n");
   }
+}
+
+bool AirspySource::Start()
+{
+  if (this->m_streamingState != Streaming) {
+    int status = airspy_start_rx(this->m_dev, 
+                                 _airspy_rx_callback, 
+                                 (void *)this);
+    HANDLE_ERROR("Failed to start RX streaming: %%s\n");
+    this->m_streamingState = Streaming;
+  }
+  return true;
 }
 
 double AirspySource::set_sample_rate( double rate )
@@ -158,39 +167,66 @@ double AirspySource::set_sample_rate( double rate )
 int AirspySource::_airspy_rx_callback(airspy_transfer* transfer)
 {
   AirspySource * obj = (AirspySource *)transfer->ctx;
-  return obj->airspy_rx_callback((float *)transfer->samples, transfer->sample_count);
+  return obj->airspy_rx_callback(transfer->samples, transfer->sample_count);
 }
 
-int AirspySource::airspy_rx_callback(void *samples, int sample_count)
+int AirspySource::airspy_rx_callback(void * samples, int sample_count)
 {
-  if (this->m_streamingState == GetSamples) {
-    memcpy(this->m_sample_buffer, samples, sizeof(int16_t) * 2 * this->m_sampleCount);
-    this->m_streamingState = GotSamples;
+  if (this->GetIterationCount() > 0) {
+    double centerFrequency = this->GetCurrentFrequency();
+    double nextFrequency = this->GetNextFrequency();
+    if (this->GetFrequencyCount() > 1) {
+      this->Retune(nextFrequency);
+    }
+    this->m_sampleBuffer->AppendSamples(reinterpret_cast<int16_t (*)[2]>(samples), 
+                                        centerFrequency);
+  } else {
+    this->m_streamingState = Done;
   }
   return 0; // TODO: return -1 on error/stop
 }
 
-bool AirspySource::GetNextSamples(int16_t sample_buffer[][2], double & centerFrequency)
+bool AirspySource::GetNextSamples(SampleBuffer * sampleBuffer, double & centerFrequency)
 {
-  /* Tune to the specified frequency immediately via BLADERF_RETUNE_NOW.
-   *
-   * Alternatively, this re-tune could be scheduled by providing a
-   * timestamp counter value */
   int status;
   uint32_t delta = 100;
   centerFrequency = this->GetNextFrequency();
-  status = airspy_set_freq(this->m_dev, centerFrequency);
-  HANDLE_ERROR("Failed to tune  %u Hz: %%s\n", 
-               centerFrequency);
-
   // sleep(0.010);
   //fprintf(stderr, "Tuned to %u\n", frequencies[j]);
   /* ... Handle signals at current frequency ... */
-  this->m_sample_buffer = sample_buffer;
-  this->m_streamingState = GetSamples;
+  this->m_streamingState = Streaming;
 
-  while (this->m_streamingState != GotSamples) {
+  while (this->m_streamingState != Done) {
   }
 
+  if (this->GetFrequencyCount() > 1) {
+    this->Retune(this->GetNextFrequency());
+  }
   return true;
+}
+
+bool AirspySource::StartStreaming(uint32_t numIterations, SampleBuffer & sampleBuffer)
+{
+  this->m_iterationCount = numIterations;
+  this->m_sampleBuffer = &sampleBuffer;
+  this->Start();
+  auto result = this->StartThread();
+  return result;
+}
+
+void AirspySource::ThreadWorker()
+{
+  while (this->m_streamingState != Done) {
+  };
+  int status = airspy_stop_rx(this->m_dev);
+  HANDLE_ERROR("Failed to stop RX streaming: %%s\n");
+}
+
+double AirspySource::Retune(double centerFrequency)
+{
+  int status;
+  status = airspy_set_freq(this->m_dev, centerFrequency);
+  HANDLE_ERROR("Failed to tune to %.0f Hz: %%s\n", 
+               centerFrequency);
+  return centerFrequency;
 }

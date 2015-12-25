@@ -6,11 +6,10 @@ class AirspySource : public SignalSource
 {
   enum StreamingState {
     Illegal = 0,
-    GetSamples,
-    GotSamples
+    Streaming,
+    Done
   } m_streamingState;
   struct airspy_device * m_dev;
-  int16_t (*m_sample_buffer)[2];
   bool m_done_streaming;
   void handle_error(int status, const char * format, ...);
   static int _airspy_rx_callback(airspy_transfer* transfer);
@@ -24,6 +23,10 @@ class AirspySource : public SignalSource
                double startFrequency, 
                double stopFrequency);
   virtual ~AirspySource();
-  virtual bool GetNextSamples(int16_t sample_buffer[][2], double & centerFrequency);
+  virtual bool GetNextSamples(SampleBuffer * sample_buffer, double_t & centerFrequency);
+  virtual bool StartStreaming(uint32_t numIterations, SampleBuffer & sampleBuffer);
+  virtual bool Start();
+  virtual void ThreadWorker();
+  virtual double Retune(double frequency);
 };
 

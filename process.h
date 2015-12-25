@@ -6,6 +6,9 @@
 #include "fft.h"
 #include "buffer.h"
 
+class SampleBuffer;
+class SignalSource;
+
 class FFTWindow {
   std::vector<float> m_windowVector;
   float * m_window;
@@ -20,10 +23,6 @@ class FFTWindow {
 
 class ProcessSamples {
 
-  void short_complex_to_float_complex(int16_t source[][2],
-                                      fftwf_complex * destination);
-  void complex_to_magnitude(fftwf_complex * fft_data, 
-                            float * magnitudes);
   void process_fft(fftwf_complex * fft_data, 
                    uint32_t center_frequency);
   void WriteToFile(const char * fileName, fftwf_complex * data);
@@ -41,8 +40,7 @@ class ProcessSamples {
   float m_threshold;
   FFT m_fft;
   FFTWindow m_fftWindow;
-  CircularBuffer<fftwf_complex, 8192*16> m_circularBuffer;
-  FileWriteProcessInterface m_writeInterface;
+  SampleBuffer * m_sampleBuffer;
   fftwf_complex * m_inputSamples;
   fftwf_complex * m_fftOutputBuffer;
  public:
@@ -53,13 +51,32 @@ class ProcessSamples {
                  gr::fft::window::win_type windowType,
                  bool correctDCOffset,
                  uint32_t dcIgnoreWindow = 0,
-                 std::string outFileName = "",
                  bool doFFT = true);
   ~ProcessSamples();
   void Run(int16_t sample_buffer[][2], uint32_t centerFrequency);
   void RecordSamples(SignalSource * signalSource,
                      uint64_t count,
                      double threshold);
-  void WriteSamples(uint32_t count);
+  bool StartProcessing(SampleBuffer & sampleBuffer);
   bool m_writeData;
+};
+
+class Utility
+{
+ public:
+  static void short_complex_to_float_complex(int16_t * realSamples,
+                                             int16_t * complexSamples,
+                                             fftwf_complex * destination,
+                                             uint32_t sampleCount,
+                                             uint32_t enob,
+                                             bool correctDCOffset);
+  static void short_complex_to_float_complex(int16_t source[][2],
+                                             fftwf_complex * destination,
+                                             uint32_t sampleCount,
+                                             uint32_t enob,
+                                             bool correctDCOffset);
+
+  static void complex_to_magnitude(fftwf_complex * fft_data, 
+                                   float * magnitudes,
+                                   uint32_t sampleCount);
 };

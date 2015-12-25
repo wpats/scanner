@@ -13,6 +13,7 @@ class SdrplaySource : public SignalSource
   int16_t * m_sample_buffer_q;
   int m_samplesPerPacket;
   uint32_t m_firstSampleNum;
+  uint32_t m_bufferSize;
   const char * errorToString(mir_sdr_ErrT code);
   void handle_error(mir_sdr_ErrT status, const char * format, ...);
 
@@ -23,6 +24,9 @@ class SdrplaySource : public SignalSource
                double startFrequency, 
                double stopFrequency);
   virtual ~SdrplaySource();
-  virtual bool GetNextSamples(int16_t sample_buffer[][2], double & centerFrequency);
+  virtual bool GetNextSamples(SampleBuffer * sampleBuffer, double_t & centerFrequency);
+  virtual bool StartStreaming(uint32_t numIterations, SampleBuffer & sampleBuffer);
+  virtual void ThreadWorker();
+  virtual double Retune(double frequency);
 };
 

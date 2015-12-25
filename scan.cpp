@@ -7,6 +7,7 @@
 #include <limits>
 #include <boost/program_options.hpp>
 #include "fft.h"
+#include "sampleBuffer.h"
 #include "signalSource.h"
 #include "process.h"
 #include "bladerfSource.h"
@@ -83,10 +84,10 @@ int main(int argc, char *argv[])
     return 1;
   }
 
-  int16_t sample_buffer[sampleCount][2];
   SignalSource * source = nullptr;
   uint32_t enob = 12;
   bool correctDCOffset = false;
+  SampleBuffer::SampleKind kind = SampleBuffer::ShortComplex;
   if (args.find("bladerf") != std::string::npos) {
     source = new BladerfSource(args,
                                sample_rate, 
@@ -95,7 +96,7 @@ int main(int argc, char *argv[])
                                stopFrequency);
     correctDCOffset = true;
     if (dcIgnoreWindow == 0) {
-      dcIgnoreWindow = 5;
+      dcIgnoreWindow = 7;
     }
 #ifdef INCLUDE_B210
   } else if (args.find("b200") != std::string::npos) {
@@ -122,6 +123,7 @@ int main(int argc, char *argv[])
       startFrequency, 
       stopFrequency);
     correctDCOffset = true;
+    kind = SampleBuffer::Short;
   } else {
     std::cout << "Missing source type argument" << std::endl;
     std::cout << desc << "\n";
@@ -135,14 +137,17 @@ int main(int argc, char *argv[])
                          gr::fft::window::WIN_BLACKMAN_HARRIS,
                          correctDCOffset, 
                          dcIgnoreWindow,
-                         outFileName,
                          !fftoff);
-
+  SampleBuffer sampleBuffer(kind, enob, sampleCount);
   source->Start();
 
   struct timespec start, stop;
   clock_gettime(CLOCK_REALTIME, &start);
   double startIter = start.tv_sec*1000.0 + start.tv_nsec/1e6;
+
+  source->StartStreaming(num_iterations, sampleBuffer);
+  process.StartProcessing(sampleBuffer);
+  source->StopStreaming();
 
 #if 0
   double previousFrequency = startFrequency;
@@ -156,7 +161,6 @@ int main(int argc, char *argv[])
     source->WriteTimingData();
     // Process samples
     process.Run(sample_buffer, centerFrequency);
-    process.WriteSamples(sampleCount);
 
     // Detect complete scan.
     if (--frequencyCount == 0) {
@@ -178,7 +182,7 @@ int main(int argc, char *argv[])
     previousFrequency = centerFrequency;
   }
 #else
-  process.RecordSamples(source, sampleCount * num_iterations, 0.0);
+  // process.RecordSamples(source, sampleCount * num_iterations, 0.0);
 #endif
 
   source->Stop();

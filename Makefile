@@ -1,8 +1,9 @@
 
-OBJS := scan.o fft.o process.o signalSource.o bladerfSource.o b210Source.o \
-	airspySource.o sdrplaySource.o fileWriteInterface.o
+OBJS := scan.o fft.o process.o signalSource.o sampleBuffer.o processInterface.o \
+	bladerfSource.o	b210Source.o airspySource.o sdrplaySource.o
+
 HEADERS := scan.h signalSource.h process.h fft.h bladerfSource.h b210Source.h airspySource.h
-LIBS = -lfftw3f -lboost_program_options -lboost_thread -lboost_system -lgnuradio-fft -lvolk
+LIBS = -lfftw3f -lboost_program_options -lboost_system -lgnuradio-fft -lvolk
 
 scan: $(OBJS) Makefile
 	g++ -g -o scan $(OBJS) -L ../target/lib -lbladeRF -luhd -lairspy -lmirsdrapi-rsp -L /usr/lib/x86_64-linux-gnu $(LIBS)
@@ -10,5 +11,8 @@ scan: $(OBJS) Makefile
 clean:
 	rm *.o
 
+sampleBuffer.o: sampleBuffer.cpp buffer.cpp sampleBuffer.h
+
 %.o: %.cpp $(HEADERS)  Makefile 
 	g++ -g -D INCLUDE_B210 -o $@ -c -I ../target/include -std=gnu++11 $<
+

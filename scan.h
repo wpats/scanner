@@ -1,3 +1,4 @@
+#pragma once
 
 int populate_quick_tunes(struct bladerf * dev,
                          uint32_t num_frequencies,

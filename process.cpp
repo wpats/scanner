@@ -7,9 +7,9 @@
 #include <cassert>
 #include <volk/volk.h>
 #include "fft.h"
+#include "sampleBuffer.h"
 #include "signalSource.h"
 #include "process.h"
-#include "buffer.cpp"
 
 FFTWindow::FFTWindow(gr::fft::window::win_type type, uint32_t numSamples)
   : m_type(type),
@@ -33,39 +33,6 @@ void FFTWindow::apply(fftwf_complex * samples)
                                 this->m_numSamples);
 }
 
-void ProcessSamples::short_complex_to_float_complex(int16_t source[][2],
-                                                    fftwf_complex * destination)
-{
-  int16_t max = 1 << (this->m_enob - 1);
-  float onebymax = float(1.0/max);
-  int32_t dc_real = 0;
-  int32_t dc_imag = 0;
-  if (this->m_correctDCOffset) {
-    for (uint32_t i = 0; i < this->m_sampleCount; i++) {
-      dc_real += source[i][0];
-      dc_imag += source[i][1];
-    }
-    dc_real /= this->m_sampleCount;
-    dc_imag /= this->m_sampleCount;
-  }
-  for (uint32_t i = 0; i < this->m_sampleCount; i++) {
-    destination[i][0] = float(source[i][0] - dc_real)*onebymax;
-    destination[i][1] = float(source[i][1] - dc_imag)*onebymax;
-  }
-}
-
-
-void ProcessSamples::complex_to_magnitude(fftwf_complex * fft_data, 
-                                          float * magnitudes)
-{
-  for (uint32_t i = 0; i < this->m_sampleCount; i++) {
-    float re = fft_data[i][0];
-    float im = fft_data[i][1];
-    float mag = sqrt(re * re + im * im) / this->m_sampleCount;
-    magnitudes[i] = 10 * log2(mag) / log2(10);
-  }
-}
-
 void ProcessSamples::process_fft(fftwf_complex * fft_data, 
                                  uint32_t center_frequency)
 {
@@ -73,7 +40,7 @@ void ProcessSamples::process_fft(fftwf_complex * fft_data,
   uint32_t bin_step = this->m_sampleRate/this->m_sampleCount;
   float magnitudes[this->m_sampleCount];
 
-  complex_to_magnitude(fft_data, magnitudes);
+  Utility::complex_to_magnitude(fft_data, magnitudes, this->m_sampleCount);
 
   for (uint32_t i = 0; i < this->m_sampleCount; i++) {
     uint32_t j = (i + this->m_sampleCount/2) % this->m_sampleCount;
@@ -94,7 +61,6 @@ ProcessSamples::ProcessSamples(uint32_t numSamples,
                                gr::fft::window::win_type windowType,
                                bool correctDCOffset,
                                uint32_t dcIgnoreWindow,
-                               std::string outFileName,
                                bool doFFT)
   : m_sampleCount(numSamples),
     m_sampleRate(sampleRate),
@@ -105,9 +71,6 @@ ProcessSamples::ProcessSamples(uint32_t numSamples,
     m_correctDCOffset(correctDCOffset),
     m_dcIgnoreWindow(dcIgnoreWindow),
     m_fft(numSamples),
-    m_circularBuffer(16, nullptr),
-    m_writeInterface(!outFileName.empty() ? outFileName.c_str() : nullptr),
-    m_writeSamples(!outFileName.empty()),
     m_doFFT(doFFT)
 {
   m_inputSamples = reinterpret_cast<fftwf_complex *>(fftwf_alloc_complex(numSamples));
@@ -135,8 +98,11 @@ void ProcessSamples::WriteToFile(const char * fileName, fftwf_complex * data)
 
 void ProcessSamples::Run(int16_t sample_buffer[][2], uint32_t centerFrequency)
 {
-  this->short_complex_to_float_complex(sample_buffer, this->m_inputSamples);
-  this->m_circularBuffer.AppendItems(this->m_inputSamples, this->m_sampleCount);
+  Utility::short_complex_to_float_complex(sample_buffer, 
+                                          this->m_inputSamples,
+                                          this->m_sampleCount,
+                                          this->m_enob,
+                                          this->m_correctDCOffset);
   if (this->m_doFFT) {
     this->m_fftWindow.apply(this->m_inputSamples);
     this->m_fft.process(this->m_fftOutputBuffer, this->m_inputSamples);
@@ -166,16 +132,8 @@ void ProcessSamples::WriteSamplesToFile(std::string fileName, uint32_t count)
 {
   fprintf(stderr, "Writing to file %s\n", fileName.c_str());
   FileWriteProcessInterface writeInterface(fileName.c_str());
-  this->m_circularBuffer.ProcessItems(count, &writeInterface);
 }
 
-void ProcessSamples::WriteSamples(uint32_t count)
-{
-  if (this->m_writeSamples) {
-    this->m_circularBuffer.ProcessItems(count, &this->m_writeInterface);
-  }
-}
- 
 void ProcessSamples::RecordSamples(SignalSource * signalSource, 
                                    uint64_t count,
                                    double threshold)
@@ -185,11 +143,92 @@ void ProcessSamples::RecordSamples(SignalSource * signalSource,
   time_t startTime;
   for (uint64_t i = 0; i < count; i += this->m_sampleCount) {
     startTime = time(NULL);
-    signalSource->GetNextSamples(sample_buffer, centerFrequency);
-    this->short_complex_to_float_complex(sample_buffer, this->m_inputSamples);
-    this->m_circularBuffer.AppendItems(this->m_inputSamples, this->m_sampleCount);
+    Utility::short_complex_to_float_complex(sample_buffer, 
+                                            this->m_inputSamples,
+                                            this->m_sampleCount,
+                                            this->m_enob,
+                                            this->m_correctDCOffset);
     // Check for threshold.
     std::string fileName = this->GenerateFileName(startTime, centerFrequency);
-    this->WriteSamplesToFile(fileName, 2 * this->m_sampleCount);
+    this->WriteSamplesToFile(fileName, this->m_sampleCount);
    }
 }
+
+bool ProcessSamples::StartProcessing(SampleBuffer & sampleBuffer)
+{
+  double centerFrequency;
+  uint32_t i = 0;
+  while (sampleBuffer.GetNextSamples(this->m_inputSamples, centerFrequency)) {
+    // printf("Processing %d\n", i++);
+    this->m_fftWindow.apply(this->m_inputSamples);
+    this->m_fft.process(this->m_fftOutputBuffer, this->m_inputSamples);
+    this->process_fft(this->m_fftOutputBuffer, centerFrequency);
+  }
+  return true;
+}
+
+void Utility::short_complex_to_float_complex(int16_t * realSamples,
+                                             int16_t * imagSamples,
+                                             fftwf_complex * destination,
+                                             uint32_t sampleCount,
+                                             uint32_t enob,
+                                             bool correctDCOffset)
+{
+  int16_t max = 1 << (enob - 1);
+  float onebymax = float(1.0/max);
+  int32_t dc_real = 0;
+  int32_t dc_imag = 0;
+  if (correctDCOffset) {
+    for (uint32_t i = 0; i < sampleCount; i++) {
+      dc_real += realSamples[i];
+      dc_imag += imagSamples[i];
+    }
+    dc_real /= sampleCount;
+    dc_imag /= sampleCount;
+  }
+  for (uint32_t i = 0; i < sampleCount; i++) {
+    destination[i][0] = float(realSamples[i] - dc_real)*onebymax;
+    destination[i][1] = float(imagSamples[i] - dc_imag)*onebymax;
+  }
+}
+
+void Utility::short_complex_to_float_complex(int16_t source[][2],
+                                             fftwf_complex * destination,
+                                             uint32_t sampleCount,
+                                             uint32_t enob,
+                                             bool correctDCOffset)
+{
+  int16_t max = 1 << (enob - 1);
+  float onebymax = float(1.0/max);
+  int32_t dc_real = 0;
+  int32_t dc_imag = 0;
+  int16_t max_r = -1;
+  int16_t max_i = -1;
+  if (correctDCOffset) {
+    for (uint32_t i = 0; i < sampleCount; i++) {
+      dc_real += source[i][0];
+      dc_imag += source[i][1];
+      max_r = std::max<int16_t>(max_r, source[i][0]);
+      max_i = std::max<int16_t>(max_i, source[i][1]);
+    }
+    dc_real /= sampleCount;
+    dc_imag /= sampleCount;
+  }
+  for (uint32_t i = 0; i < sampleCount; i++) {
+    destination[i][0] = float(source[i][0] - dc_real)*onebymax;
+    destination[i][1] = float(source[i][1] - dc_imag)*onebymax;
+  }
+}
+
+void Utility::complex_to_magnitude(fftwf_complex * fft_data, 
+                                   float * magnitudes,
+                                   uint32_t sampleCount)
+{
+  for (uint32_t i = 0; i < sampleCount; i++) {
+    float re = fft_data[i][0];
+    float im = fft_data[i][1];
+    float mag = sqrt(re * re + im * im) / sampleCount;
+    magnitudes[i] = 10 * log2(mag) / log2(10);
+  }
+}
+
