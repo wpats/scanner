@@ -168,20 +168,25 @@ void ProcessSamples::DoTimeDomainThresholding(fftwf_complex * inputSamples,
                                               double centerFrequency)
 {
   double log10 = log2(10);
+  // float max = std::numeric_limits<float>::min();
   for (uint32_t i = 0; i < this->m_sampleCount; i++) {
     float re = inputSamples[i][0];
     float im = inputSamples[i][1];
     float mag = sqrt(re * re + im * im); // / this->m_sampleCount;
     float magnitude = 10 * log2(mag) / log10;
+    // max = std::max(max, magnitude);
     if (magnitude > this->m_threshold) {
       printf("Signal %f above threshold %f at frequency %.0f\n", 
              magnitude, 
              this->m_threshold,
              centerFrequency);
-      this->WriteSamplesToFile(4 * this->m_sampleCount, centerFrequency);
+      if (this->m_fileNameBase != "") {
+        this->WriteSamplesToFile(4 * this->m_sampleCount, centerFrequency);
+      }
       return;
     }
   }
+  // printf("max magnitude = %f, foundNonZero = %d\n", max, foundNonZero);
 }
 
 bool ProcessSamples::StartProcessing(SampleBuffer & sampleBuffer)

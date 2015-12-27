@@ -87,7 +87,7 @@ SdrplaySource::SdrplaySource(std::string args,
   this->m_sample_buffer_q = new int16_t[bufferSize];
 
   // Configure DC tracking in tuner
-  status = mir_sdr_SetDcMode(0, 0);
+  status = mir_sdr_SetDcMode(4, 1);
   // status = mir_sdr_SetDCTrackTime(63);
 }
 

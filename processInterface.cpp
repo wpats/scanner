@@ -34,7 +34,7 @@ void FileWriteProcessInterface::Begin(uint64_t sequenceId, uint32_t totalItemCou
 
 void FileWriteProcessInterface::Process(const fftwf_complex * items, uint32_t count)
 {
-#if 0
+#if 1
   size_t written = fwrite(items, 
                           sizeof(fftwf_complex), 
                           count, 

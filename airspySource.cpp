@@ -95,7 +95,7 @@ AirspySource::AirspySource(std::string args,
   status = airspy_set_sample_type(this->m_dev, AIRSPY_SAMPLE_INT16_IQ);
   HANDLE_ERROR("Failed to set sample type: %%s\n");
 
-  double centerFrequency = this->m_frequencies[this->m_frequencyIndex];
+  double centerFrequency = this->GetCurrentFrequency();
   this->Retune(centerFrequency);
 }
 
@@ -103,7 +103,7 @@ AirspySource::~AirspySource()
 {
   if (this->m_dev != nullptr) {
     int status = airspy_stop_rx(this->m_dev);
-    double centerFrequency = this->m_frequencies[this->m_frequencyIndex];
+    double centerFrequency = this->GetCurrentFrequency();
     HANDLE_ERROR("Failed to stop RX streaming at %u: %%s\n", centerFrequency);
     status = airspy_close(this->m_dev);
     HANDLE_ERROR("Error closing airspy: %%s\n");
@@ -180,6 +180,8 @@ int AirspySource::airspy_rx_callback(void * samples, int sample_count)
     }
     this->m_sampleBuffer->AppendSamples(reinterpret_cast<int16_t (*)[2]>(samples), 
                                         centerFrequency);
+    //this->m_sampleBuffer->AppendSamples(reinterpret_cast<fftwf_complex *>(samples), 
+    //                                    centerFrequency);
   } else {
     this->m_streamingState = Done;
   }

@@ -118,7 +118,8 @@ int main(int argc, char *argv[])
       sampleCount, 
       startFrequency, 
       stopFrequency);
-    correctDCOffset = true;
+    // kind = SampleBuffer::FloatComplex;
+    correctDCOffset = false;
     if (dcIgnoreWindow == 0) {
       dcIgnoreWindow = 24;
     }

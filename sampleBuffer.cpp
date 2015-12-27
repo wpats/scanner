@@ -30,7 +30,7 @@ void SampleBuffer::WriteSamplesToFile(std::string fileName, uint32_t count)
 {
   fprintf(stderr, "Writing to file %s\n", fileName.c_str());
   FileWriteProcessInterface writeInterface(fileName.c_str());
-  this->m_circularBuffer.ProcessEndItems(count, &writeInterface);
+  this->m_circularBuffer.ProcessItems(this->m_nextOutSequenceId, count, &writeInterface);
 }
 
 void SampleBuffer::SetIsDone()
