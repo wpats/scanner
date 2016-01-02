@@ -11,6 +11,8 @@ class AirspySource : public SignalSource
   } m_streamingState;
   struct airspy_device * m_dev;
   bool m_done_streaming;
+  fftwf_complex * m_buffer;
+  uint32_t m_bufferIndex;
   void handle_error(int status, const char * format, ...);
   static int _airspy_rx_callback(airspy_transfer* transfer);
   int airspy_rx_callback(void *samples, int sample_count);
@@ -23,8 +25,8 @@ class AirspySource : public SignalSource
                double startFrequency, 
                double stopFrequency);
   virtual ~AirspySource();
-  virtual bool GetNextSamples(SampleBuffer * sample_buffer, double_t & centerFrequency);
-  virtual bool StartStreaming(uint32_t numIterations, SampleBuffer & sampleBuffer);
+  virtual bool GetNextSamples(SampleQueue * sampleQueue, double_t & centerFrequency);
+  virtual bool StartStreaming(uint32_t numIterations, SampleQueue & sampleQueue);
   virtual bool Start();
   virtual void ThreadWorker();
   virtual double Retune(double frequency);

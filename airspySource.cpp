@@ -10,7 +10,7 @@
 #include <vector>
 #include <algorithm>
 #include <libairspy/airspy.h>
-#include "sampleBuffer.h"
+#include "messageQueue.h"
 #include "signalSource.h"
 #include "airspySource.h"
 
@@ -36,8 +36,10 @@ AirspySource::AirspySource(std::string args,
                            double stopFrequency)
   : SignalSource(sampleRate, sampleCount, startFrequency, stopFrequency),
     m_dev(nullptr),
-    m_streamingState(Illegal)
+    m_streamingState(Illegal),
+    m_bufferIndex(0)
 {
+  this->m_buffer = new fftwf_complex[sampleCount];
   int status;
 
   status = airspy_open( &this->m_dev );
@@ -92,7 +94,7 @@ AirspySource::AirspySource(std::string args,
     HANDLE_ERROR("Failed to enable DC bias: %%s\n");
   }
 
-  status = airspy_set_sample_type(this->m_dev, AIRSPY_SAMPLE_INT16_IQ);
+  status = airspy_set_sample_type(this->m_dev, AIRSPY_SAMPLE_FLOAT32_IQ);
   HANDLE_ERROR("Failed to set sample type: %%s\n");
 
   double centerFrequency = this->GetCurrentFrequency();
@@ -178,17 +180,30 @@ int AirspySource::airspy_rx_callback(void * samples, int sample_count)
     if (this->GetFrequencyCount() > 1) {
       this->Retune(nextFrequency);
     }
-    this->m_sampleBuffer->AppendSamples(reinterpret_cast<int16_t (*)[2]>(samples), 
-                                        centerFrequency);
-    //this->m_sampleBuffer->AppendSamples(reinterpret_cast<fftwf_complex *>(samples), 
-    //                                    centerFrequency);
+    if (sample_count < this->m_sampleCount) {
+      if (this->m_bufferIndex < this->m_sampleCount) {
+        memcpy(this->m_buffer + this->m_bufferIndex, 
+               samples, 
+               sizeof(fftwf_complex) * sample_count);
+        this->m_bufferIndex += sample_count;
+      }
+      if (this->m_bufferIndex == this->m_sampleCount) {
+        this->m_sampleQueue->AppendSamples(this->m_buffer, centerFrequency);
+      }
+    } else {
+      // sample_count >= this->m_sampleCount
+      for (uint32_t count = 0; count < sample_count; count += this->m_sampleCount) {
+        this->m_sampleQueue->AppendSamples(reinterpret_cast<fftwf_complex *>(samples) + count, 
+                                           centerFrequency);
+      }
+    }
   } else {
     this->m_streamingState = Done;
   }
   return 0; // TODO: return -1 on error/stop
 }
 
-bool AirspySource::GetNextSamples(SampleBuffer * sampleBuffer, double & centerFrequency)
+bool AirspySource::GetNextSamples(SampleQueue * sampleQueue, double & centerFrequency)
 {
   int status;
   uint32_t delta = 100;
@@ -207,10 +222,10 @@ bool AirspySource::GetNextSamples(SampleBuffer * sampleBuffer, double & centerFr
   return true;
 }
 
-bool AirspySource::StartStreaming(uint32_t numIterations, SampleBuffer & sampleBuffer)
+bool AirspySource::StartStreaming(uint32_t numIterations, SampleQueue & sampleQueue)
 {
   this->m_iterationCount = numIterations;
-  this->m_sampleBuffer = &sampleBuffer;
+  this->m_sampleQueue = &sampleQueue;
   this->Start();
   auto result = this->StartThread();
   return result;

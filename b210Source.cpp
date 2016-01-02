@@ -4,7 +4,7 @@
 #include <boost/algorithm/string.hpp>
 #include <iostream>
 #include <complex>
-#include "sampleBuffer.h"
+#include "messageQueue.h"
 #include "signalSource.h"
 #include "b210Source.h"
 
@@ -46,10 +46,11 @@ B210Source::B210Source(std::string args,
       std::cout << "Gain name " << name << std::endl;
     }
   }
-  this->m_usrp->set_rx_gain(70.0, 0);
+  this->m_usrp->set_rx_gain(38.0, 0);
 
   //create a receive streamer
-  uhd::stream_args_t stream_args("sc16", "sc16"); //complex floats
+  // uhd::stream_args_t stream_args("sc16", "sc16"); //complex floats
+  uhd::stream_args_t stream_args("fc32", "sc16"); //complex floats
   stream_args.channels = channel_nums;
   this->m_rx_stream = this->m_usrp->get_rx_stream(stream_args);
 
@@ -89,7 +90,7 @@ double B210Source::Retune(double currentFrequency)
   return currentFrequency;
 }
 
-bool B210Source::GetNextSamples(SampleBuffer * sampleBuffer, double & centerFrequency)
+bool B210Source::GetNextSamples(SampleQueue * sampleQueue, double & centerFrequency)
 {
   // Retune and set the centerFrequency.
   centerFrequency = this->GetCurrentFrequency();
@@ -150,10 +151,10 @@ bool B210Source::GetNextSamples(SampleBuffer * sampleBuffer, double & centerFreq
   return true;
 }
 
-bool B210Source::StartStreaming(uint32_t numIterations, SampleBuffer & sampleBuffer)
+bool B210Source::StartStreaming(uint32_t numIterations, SampleQueue & sampleQueue)
 {
   this->m_iterationCount = numIterations;
-  this->m_sampleBuffer = &sampleBuffer;
+  this->m_sampleQueue = &sampleQueue;
   auto result = this->StartThread();
   return result;
 }
@@ -172,7 +173,8 @@ void B210Source::ThreadWorker()
     this->m_rx_stream->issue_stream_cmd(stream_cmd);
 
     std::vector<void *> buffs(2);
-    int16_t sample_buffer[this->m_sampleCount][2];
+    // int16_t sample_buffer[this->m_sampleCount][2];
+    fftwf_complex sample_buffer[this->m_sampleCount];
     // meta-data will be filled in by recv()
     uhd::rx_metadata_t md;
     double timeout = 0.1; //timeout (delay before receive + padding)
@@ -212,6 +214,6 @@ void B210Source::ThreadWorker()
     if (this->GetFrequencyCount() > 1) {
       this->Retune(nextFrequency);
     }
-    this->m_sampleBuffer->AppendSamples(sample_buffer, centerFrequency);
+    this->m_sampleQueue->AppendSamples(sample_buffer, centerFrequency);
   }
 }

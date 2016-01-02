@@ -5,8 +5,6 @@
 #include <memory>
 #include <thread>
 
-class SampleBuffer;
-
 class SignalSource
 {
  protected:
@@ -29,7 +27,7 @@ class SignalSource
   std::vector<double> m_frequencies;
   uint32_t m_frequencyIndex;
   uint32_t m_iterationCount;
-  SampleBuffer * m_sampleBuffer;
+  SampleQueue * m_sampleQueue;
   bool StopThread();
   bool StartThread();
   void ThreadWorkerHelper();
@@ -46,8 +44,8 @@ class SignalSource
                bool doTiming = false);
   virtual ~SignalSource();
   virtual bool Start();
-  virtual bool GetNextSamples(SampleBuffer * sample_buffer, double_t & centerFrequency) = 0;
-  virtual bool StartStreaming(uint32_t numIterations, SampleBuffer & sampleBuffer) = 0;
+  virtual bool GetNextSamples(SampleQueue * sample_queue, double_t & centerFrequency) = 0;
+  virtual bool StartStreaming(uint32_t numIterations, SampleQueue & sampleQueue) = 0;
   virtual void ThreadWorker() = 0;
   virtual bool Stop();
   virtual double Retune(double frequency) = 0;

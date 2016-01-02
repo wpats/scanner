@@ -1,8 +1,9 @@
 
-OBJS := scan.o fft.o process.o signalSource.o sampleBuffer.o processInterface.o \
+OBJS := scan.o fft.o process.o signalSource.o sampleBuffer.o processInterface.o utility.o\
 	bladerfSource.o	b210Source.o airspySource.o sdrplaySource.o
 
-HEADERS := scan.h signalSource.h process.h fft.h bladerfSource.h b210Source.h airspySource.h
+HEADERS := scan.h signalSource.h process.h fft.h messageQueue.h \
+	bladerfSource.h b210Source.h airspySource.h
 LIBS = -lfftw3f -lboost_program_options -lboost_system -lgnuradio-fft -lvolk
 
 scan: $(OBJS) Makefile

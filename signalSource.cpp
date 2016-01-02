@@ -1,7 +1,8 @@
 #include <math.h>
 #include <time.h>
 #include <stdio.h>
-#include "sampleBuffer.h"
+#include "fft.h"
+#include "messageQueue.h"
 #include "signalSource.h"
 
 SignalSource::SignalSource(uint32_t sampleRate,
@@ -92,8 +93,8 @@ bool SignalSource::StopThread()
 void SignalSource::ThreadWorkerHelper()
 {
   this->ThreadWorker();
-  this->m_sampleBuffer->SetIsDone();
-  this->m_sampleBuffer = nullptr;
+  this->m_sampleQueue->SetIsDone();
+  this->m_sampleQueue = nullptr;
 }
 
 void SignalSource::StopStreaming()

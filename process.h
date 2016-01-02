@@ -4,7 +4,7 @@
 #include <time.h>
 #include <gnuradio/fft/window.h>
 #include "fft.h"
-#include "buffer.h"
+#include "messageQueue.h"
 
 class SampleBuffer;
 class SignalSource;
@@ -31,28 +31,36 @@ class ProcessSamples {
   };
     
  private:
-  void process_fft(fftwf_complex * fft_data, 
+  bool process_fft(fftwf_complex * fft_data, 
                    uint32_t center_frequency);
   void WriteToFile(const char * fileName, fftwf_complex * data);
   void WriteSamplesToFile(uint32_t count, double centerFrequency);
+  void WriteSamplesToFile(uint64_t sequenceId, double centerFrequency);
   std::string GenerateFileName(std::string fileNameBase, 
                                time_t startTime, 
                                double_t centerFrequency);
-  void DoTimeDomainThresholding(fftwf_complex * inputSamples, double centerFrequency);
+  bool DoTimeDomainThresholding(fftwf_complex * inputSamples, double centerFrequency);
+  void ProcessWrite(bool doWrite, 
+                    double centerFrequency,
+                    uint64_t sequenceId);
 
   uint32_t m_sampleCount;
   uint32_t m_sampleRate;
   uint32_t m_enob;
   uint32_t m_fileCounter;
+  uint32_t m_preTrigger;
+  uint32_t m_postTrigger;
+  uint64_t m_endSequenceId;
   bool m_correctDCOffset;
   bool m_dcIgnoreWindow;
   bool m_writeSamples;
+  bool m_writing;
   Mode m_mode;
   std::string m_fileNameBase;
   float m_threshold;
   FFT m_fft;
   FFTWindow m_fftWindow;
-  SampleBuffer * m_sampleBuffer;
+  SampleQueue * m_sampleQueue;
   fftwf_complex * m_inputSamples;
   fftwf_complex * m_fftOutputBuffer;
  public:
@@ -70,26 +78,7 @@ class ProcessSamples {
   void RecordSamples(SignalSource * signalSource,
                      uint64_t count,
                      double threshold);
-  bool StartProcessing(SampleBuffer & sampleBuffer);
+  bool StartProcessing(SampleQueue & sampleQueue);
   bool m_writeData;
 };
 
-class Utility
-{
- public:
-  static void short_complex_to_float_complex(int16_t * realSamples,
-                                             int16_t * complexSamples,
-                                             fftwf_complex * destination,
-                                             uint32_t sampleCount,
-                                             uint32_t enob,
-                                             bool correctDCOffset);
-  static void short_complex_to_float_complex(int16_t source[][2],
-                                             fftwf_complex * destination,
-                                             uint32_t sampleCount,
-                                             uint32_t enob,
-                                             bool correctDCOffset);
-
-  static void complex_to_magnitude(fftwf_complex * fft_data, 
-                                   float * magnitudes,
-                                   uint32_t sampleCount);
-};

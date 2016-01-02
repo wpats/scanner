@@ -30,8 +30,8 @@ class BladerfSource : public SignalSource
                 double startFrequency, 
                 double stopFrequency);
   virtual ~BladerfSource();
-  virtual bool GetNextSamples(SampleBuffer * sample_buffer, double_t & centerFrequency);
-  virtual bool StartStreaming(uint32_t numIterations, SampleBuffer & sampleBuffer);
+  virtual bool GetNextSamples(SampleQueue * sampleQueue, double_t & centerFrequency);
+  virtual bool StartStreaming(uint32_t numIterations, SampleQueue & sampleQueue);
   virtual void ThreadWorker();
   virtual double Retune(double frequency);
 };

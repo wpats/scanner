@@ -8,7 +8,7 @@
 #include <stdarg.h>
 #include <cassert>
 #include <mirsdrapi-rsp.h>
-#include "sampleBuffer.h"
+#include "messageQueue.h"
 #include "signalSource.h"
 #include "sdrplaySource.h"
 
@@ -47,10 +47,11 @@ void SdrplaySource::handle_error(mir_sdr_ErrT status, const char * format, ...)
 }
 
 SdrplaySource::SdrplaySource(std::string args,
-                           uint32_t sampleRate, 
-                           uint32_t sampleCount, 
-                           double startFrequency, 
-                           double stopFrequency)
+                             uint32_t sampleRate, 
+                             uint32_t sampleCount, 
+                             double startFrequency, 
+                             double stopFrequency,
+                             uint32_t bandWidth)
   : SignalSource(sampleRate, sampleCount, startFrequency, stopFrequency),
     m_samplesPerPacket(0),
     m_firstSampleNum(0),
@@ -68,13 +69,32 @@ SdrplaySource::SdrplaySource(std::string args,
     fprintf(stderr, "API version does not match dll\n");
     exit(1);
   }
+  mir_sdr_Bw_MHzT bw = mir_sdr_BW_8_000;
+  switch (bandWidth)
+    {
+    case 8000000:
+      bw = mir_sdr_BW_8_000;
+      break;
+    case 7000000:
+      bw = mir_sdr_BW_7_000;
+      break;
+    case 6000000:
+      bw = mir_sdr_BW_6_000;
+      break;
+    case 5000000:
+      bw = mir_sdr_BW_5_000;
+      break;
+    case 1536000:
+      bw = mir_sdr_BW_1_536;
+      break;
+    }
 
   double centerFrequency = this->GetCurrentFrequency();
   // Initialise API and hardware  
   status = mir_sdr_Init(gRdB, 
                         double(sampleRate/1e6),
                         centerFrequency/1e6,
-                        mir_sdr_BW_8_000,
+                        bw,
                         mir_sdr_IF_Zero,
                         &this->m_samplesPerPacket);
   HANDLE_ERROR("Failed to initialize Sdrplay device %.0f: %%s\n", centerFrequency);
@@ -97,7 +117,7 @@ SdrplaySource::~SdrplaySource()
   HANDLE_ERROR("Failed to uninitialize Sdrplay device: %%s\n");
 }
 
-bool SdrplaySource::GetNextSamples(SampleBuffer *  sampleBuffer, double & centerFrequency)
+bool SdrplaySource::GetNextSamples(SampleQueue *  sampleQueue, double & centerFrequency)
 {
   mir_sdr_ErrT status;
 
@@ -124,16 +144,16 @@ bool SdrplaySource::GetNextSamples(SampleBuffer *  sampleBuffer, double & center
   if (this->GetFrequencyCount() > 1) {
     this->Retune(nextFrequency);
   }
-  this->m_sampleBuffer->AppendSamples(this->m_sample_buffer_i, 
+  this->m_sampleQueue->AppendSamples(this->m_sample_buffer_i, 
                                       this->m_sample_buffer_q,
                                       centerFrequency);
   return true;
 }
 
-bool SdrplaySource::StartStreaming(uint32_t numIterations, SampleBuffer & sampleBuffer)
+bool SdrplaySource::StartStreaming(uint32_t numIterations, SampleQueue & sampleQueue)
 {
   this->m_iterationCount = numIterations;
-  this->m_sampleBuffer = &sampleBuffer;
+  this->m_sampleQueue = &sampleQueue;
   auto result = this->StartThread();
   return result;
 }
@@ -165,9 +185,9 @@ void SdrplaySource::ThreadWorker()
     if (this->GetFrequencyCount() > 1) {
       this->Retune(nextFrequency);
     }
-    this->m_sampleBuffer->AppendSamples(this->m_sample_buffer_i, 
-                                        this->m_sample_buffer_q,
-                                        centerFrequency);
+    this->m_sampleQueue->AppendSamples(this->m_sample_buffer_i, 
+                                       this->m_sample_buffer_q,
+                                       centerFrequency);
   }
   return;
 }
@@ -183,3 +203,4 @@ double SdrplaySource::Retune(double centerFrequency)
                centerFrequency);
   return centerFrequency;
 }
+

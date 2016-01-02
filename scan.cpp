@@ -7,7 +7,7 @@
 #include <limits>
 #include <boost/program_options.hpp>
 #include "fft.h"
-#include "sampleBuffer.h"
+#include "messageQueue.h"
 #include "signalSource.h"
 #include "process.h"
 #include "bladerfSource.h"
@@ -44,12 +44,14 @@ int main(int argc, char *argv[])
   uint32_t num_iterations;
   uint32_t dcIgnoreWindow = 0;
   uint32_t sampleCount;
+  uint32_t bandWidth;
   namespace po = boost::program_options;
 
   po::options_description desc("Program options");
   desc.add_options()
     ("help", "print help message")
     ("args", po::value<std::string>(&args)->default_value(""), "device args")
+    ("bandwidth,b", po::value<uint32_t>(&bandWidth)->default_value(8000000), "Band width")
     ("count,c", po::value<uint32_t>(&sampleCount)->default_value(8192), "sample count")
     ("dcwindow,d", po::value<uint32_t>(&dcIgnoreWindow)->default_value(0), "ignore window around DC")
     ("mode,m", po::value<std::string>(&modeString)->default_value("time"), "processing mode 'time' or 'frequency'")
@@ -93,7 +95,7 @@ int main(int argc, char *argv[])
   SignalSource * source = nullptr;
   uint32_t enob = 12;
   bool correctDCOffset = false;
-  SampleBuffer::SampleKind kind = SampleBuffer::ShortComplex;
+  SampleQueue::SampleKind sampleKind = SampleQueue::ShortComplex;
   if (args.find("bladerf") != std::string::npos) {
     source = new BladerfSource(args,
                                sample_rate, 
@@ -111,6 +113,7 @@ int main(int argc, char *argv[])
       sampleCount, 
       startFrequency, 
       stopFrequency);
+    sampleKind = SampleQueue::FloatComplex;
 #endif
   } else if (args.find("airspy") != std::string::npos) {
     source = new AirspySource(args, 
@@ -118,7 +121,7 @@ int main(int argc, char *argv[])
       sampleCount, 
       startFrequency, 
       stopFrequency);
-    // kind = SampleBuffer::FloatComplex;
+    sampleKind = SampleQueue::FloatComplex;
     correctDCOffset = false;
     if (dcIgnoreWindow == 0) {
       dcIgnoreWindow = 24;
@@ -128,9 +131,10 @@ int main(int argc, char *argv[])
       sample_rate, 
       sampleCount, 
       startFrequency, 
-      stopFrequency);
+      stopFrequency,
+      bandWidth);
     correctDCOffset = true;
-    kind = SampleBuffer::Short;
+    sampleKind = SampleQueue::Short;
   } else {
     std::cout << "Missing source type argument" << std::endl;
     std::cout << desc << "\n";
@@ -146,15 +150,15 @@ int main(int argc, char *argv[])
                          mode,
                          outFileName,
                          dcIgnoreWindow);
-  SampleBuffer sampleBuffer(kind, enob, sampleCount);
+  SampleQueue sampleQueue(sampleKind, enob, sampleCount, 1024, outFileName != "");
   source->Start();
 
   struct timespec start, stop;
   clock_gettime(CLOCK_REALTIME, &start);
   double startIter = start.tv_sec*1000.0 + start.tv_nsec/1e6;
 
-  source->StartStreaming(num_iterations, sampleBuffer);
-  process.StartProcessing(sampleBuffer);
+  source->StartStreaming(num_iterations, sampleQueue);
+  process.StartProcessing(sampleQueue);
   source->StopStreaming();
 
 #if 0

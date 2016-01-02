@@ -6,7 +6,7 @@
 #include <limits>
 #include <stdarg.h>
 #include <libbladeRF.h>
-#include "sampleBuffer.h"
+#include "messageQueue.h"
 #include "signalSource.h"
 #include "bladerfSource.h"
 
@@ -178,7 +178,7 @@ BladerfSource::BladerfSource(std::string args,
   this->Retune(this->GetCurrentFrequency());
 }
 
-bool BladerfSource::GetNextSamples(SampleBuffer * sampleBuffer, double & centerFrequency)
+bool BladerfSource::GetNextSamples(SampleQueue * sampleQueue, double & centerFrequency)
 {
   int status;
   uint32_t delta = 100;
@@ -220,14 +220,14 @@ bool BladerfSource::GetNextSamples(SampleBuffer * sampleBuffer, double & centerF
   if (this->GetFrequencyCount() > 1) {
     this->Retune(this->GetNextFrequency());
   }
-  this->m_sampleBuffer->AppendSamples(sample_buffer, centerFrequency);
+  this->m_sampleQueue->AppendSamples(sample_buffer, centerFrequency);
   return true;
 }
 
-bool BladerfSource::StartStreaming(uint32_t numIterations, SampleBuffer & sampleBuffer)
+bool BladerfSource::StartStreaming(uint32_t numIterations, SampleQueue & sampleQueue)
 {
   this->m_iterationCount = numIterations;
-  this->m_sampleBuffer = &sampleBuffer;
+  this->m_sampleQueue = &sampleQueue;
   auto result = this->StartThread();
   return result;
 }
@@ -277,7 +277,7 @@ void BladerfSource::ThreadWorker()
     if (this->GetFrequencyCount() > 1) {
       this->Retune(nextFrequency);
     }
-    this->m_sampleBuffer->AppendSamples(sample_buffer, centerFrequency);
+    this->m_sampleQueue->AppendSamples(sample_buffer, centerFrequency);
   }
   return;
 }

@@ -120,6 +120,7 @@ void SampleBuffer::AppendSamples(fftwf_complex * floatComplexSamples,
 {
    assert(this->m_kind == FloatComplex);   
    this->AppendHelper(centerFrequency);
+   memcpy(this->m_floatComplex, floatComplexSamples, sizeof(fftwf_complex) * this->m_sampleCount);
    this->SynchronizedAppend();
 }
 

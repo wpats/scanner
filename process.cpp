@@ -7,7 +7,7 @@
 #include <cassert>
 #include <volk/volk.h>
 #include "fft.h"
-#include "sampleBuffer.h"
+#include "messageQueue.h"
 #include "signalSource.h"
 #include "process.h"
 
@@ -33,7 +33,7 @@ void FFTWindow::apply(fftwf_complex * samples)
                                 this->m_numSamples);
 }
 
-void ProcessSamples::process_fft(fftwf_complex * fft_data, 
+bool ProcessSamples::process_fft(fftwf_complex * fft_data, 
                                  uint32_t center_frequency)
 {
   uint32_t start_frequency = center_frequency - this->m_sampleRate/2;
@@ -41,7 +41,7 @@ void ProcessSamples::process_fft(fftwf_complex * fft_data,
   float magnitudes[this->m_sampleCount];
 
   Utility::complex_to_magnitude(fft_data, magnitudes, this->m_sampleCount);
-
+  bool trigger = false;
   for (uint32_t i = 0; i < this->m_sampleCount; i++) {
     uint32_t j = (i + this->m_sampleCount/2) % this->m_sampleCount;
     if (j < this->m_dcIgnoreWindow || (this->m_sampleCount - j < this->m_dcIgnoreWindow)) {
@@ -50,8 +50,10 @@ void ProcessSamples::process_fft(fftwf_complex * fft_data,
     if (magnitudes[j] > this->m_threshold) {
       uint32_t frequency = start_frequency + i*bin_step;
       printf("freq %u power_db %f\n", frequency, magnitudes[j]);
+      trigger = true;
     }
   }
+  return trigger;
 }
 
 ProcessSamples::ProcessSamples(uint32_t numSamples, 
@@ -73,8 +75,12 @@ ProcessSamples::ProcessSamples(uint32_t numSamples,
     m_dcIgnoreWindow(dcIgnoreWindow),
     m_fft(numSamples),
     m_mode(mode),
-    m_sampleBuffer(nullptr),
-    m_fileNameBase(fileNameBase)
+    m_sampleQueue(nullptr),
+    m_fileNameBase(fileNameBase),
+    m_preTrigger(2),
+    m_postTrigger(4),
+    m_writing(false),
+    m_endSequenceId(0)
 {
   assert(mode > Illegal && mode <= FrequencyDomain);
   m_inputSamples = reinterpret_cast<fftwf_complex *>(fftwf_alloc_complex(numSamples));
@@ -135,13 +141,14 @@ std::string ProcessSamples::GenerateFileName(std::string fileNameBase,
   return std::string(buffer);
 }
 
-void ProcessSamples::WriteSamplesToFile(uint32_t count, double centerFrequency)
+void ProcessSamples::WriteSamplesToFile(uint64_t sequenceId, double centerFrequency)
 {
-  assert(this->m_sampleBuffer != nullptr);
+  assert(this->m_sampleQueue != nullptr);
   time_t startTime;
   startTime = time(NULL);
   std::string fileName = this->GenerateFileName(this->m_fileNameBase, startTime, centerFrequency);
-  this->m_sampleBuffer->WriteSamplesToFile(fileName, count);
+  uint64_t decrement = std::min<uint64_t>(sequenceId, this->m_preTrigger);
+  this->m_sampleQueue->BeginWrite(sequenceId - decrement, fileName);
 }
 
 void ProcessSamples::RecordSamples(SignalSource * signalSource, 
@@ -164,112 +171,85 @@ void ProcessSamples::RecordSamples(SignalSource * signalSource,
    }
 }
 
-void ProcessSamples::DoTimeDomainThresholding(fftwf_complex * inputSamples, 
+bool ProcessSamples::DoTimeDomainThresholding(fftwf_complex * inputSamples,
                                               double centerFrequency)
 {
   double log10 = log2(10);
-  // float max = std::numeric_limits<float>::min();
+  float max = std::numeric_limits<float>::min();
+  float min = std::numeric_limits<float>::max();
+  bool allZeros = true;
   for (uint32_t i = 0; i < this->m_sampleCount; i++) {
     float re = inputSamples[i][0];
     float im = inputSamples[i][1];
+    if (re != 0.0 || im != 0.0) {
+      allZeros = false;
+    }
     float mag = sqrt(re * re + im * im); // / this->m_sampleCount;
     float magnitude = 10 * log2(mag) / log10;
-    // max = std::max(max, magnitude);
+    max = std::max(max, magnitude);
+    min = std::min(min, magnitude);
     if (magnitude > this->m_threshold) {
-      printf("Signal %f above threshold %f at frequency %.0f\n", 
+      printf("Signal %f above threshold %f at frequency %.0f", 
              magnitude, 
              this->m_threshold,
              centerFrequency);
-      if (this->m_fileNameBase != "") {
-        this->WriteSamplesToFile(4 * this->m_sampleCount, centerFrequency);
-      }
-      return;
+      return true;
     }
-  }
-  // printf("max magnitude = %f, foundNonZero = %d\n", max, foundNonZero);
+  }  
+  // printf("max magnitude = %f, min = %f, allZeros = %d\n", max, min, allZeros);
+  return false;
 }
 
-bool ProcessSamples::StartProcessing(SampleBuffer & sampleBuffer)
+void ProcessSamples::ProcessWrite(bool doWrite, 
+                                  double centerFrequency,
+                                  uint64_t sequenceId)
+{
+  if (this->m_writing) {
+    if (doWrite) {
+      this->m_endSequenceId = sequenceId + this->m_postTrigger + 1;
+    } else if (sequenceId == this->m_endSequenceId) {
+      this->m_sampleQueue->EndWrite(sequenceId);
+      this->m_writing = false;
+    }
+  } else if (doWrite) {
+    if (this->m_fileNameBase != "") {
+      this->WriteSamplesToFile(sequenceId, centerFrequency);
+      this->m_writing = true;
+      this->m_endSequenceId = sequenceId + this->m_postTrigger + 1;
+    }
+  }
+}
+
+bool ProcessSamples::StartProcessing(SampleQueue & sampleQueue)
 {
   double centerFrequency;
   uint32_t i = 0;
-  this->m_sampleBuffer = &sampleBuffer;
-  while (sampleBuffer.GetNextSamples(this->m_inputSamples, centerFrequency)) {
-    // printf("Processing %d\n", i++);
+  this->m_sampleQueue = &sampleQueue;
+  SampleQueue::MessageType * message;
+  this->m_writing = false;
+  bool doWrite = false;
+  uint64_t sequenceId;
+  while (message = sampleQueue.GetNextSamples()) {
+    sequenceId = message->GetHeader().m_sequenceId;
+    double centerFrequency = message->GetHeader().m_frequency;
     if (this->m_mode == TimeDomain) {
-      this->DoTimeDomainThresholding(this->m_inputSamples, centerFrequency);
+      doWrite = this->DoTimeDomainThresholding(message->GetData(), centerFrequency);
     } else if (this->m_mode == FrequencyDomain) {
+      memcpy(this->m_inputSamples, message->GetData(), sizeof(fftwf_complex)*this->m_sampleCount);
       this->m_fftWindow.apply(this->m_inputSamples);
       this->m_fft.process(this->m_fftOutputBuffer, this->m_inputSamples);
-      this->process_fft(this->m_fftOutputBuffer, centerFrequency);
+      doWrite = this->process_fft(this->m_fftOutputBuffer, centerFrequency);
     }
+    if (doWrite) {
+      printf(" Sequence Id[%lu]\n", sequenceId);
+    }
+
+    this->ProcessWrite(doWrite, centerFrequency, sequenceId);
+    sampleQueue.MessageProcessed(message);
   }
+  // Shutdown writing gracefully.
+  this->m_endSequenceId = sequenceId;
+  this->ProcessWrite(false, centerFrequency, sequenceId);
   return true;
-}
-
-void Utility::short_complex_to_float_complex(int16_t * realSamples,
-                                             int16_t * imagSamples,
-                                             fftwf_complex * destination,
-                                             uint32_t sampleCount,
-                                             uint32_t enob,
-                                             bool correctDCOffset)
-{
-  int16_t max = 1 << (enob - 1);
-  float onebymax = float(1.0/max);
-  int32_t dc_real = 0;
-  int32_t dc_imag = 0;
-  if (correctDCOffset) {
-    for (uint32_t i = 0; i < sampleCount; i++) {
-      dc_real += realSamples[i];
-      dc_imag += imagSamples[i];
-    }
-    dc_real /= sampleCount;
-    dc_imag /= sampleCount;
-  }
-  for (uint32_t i = 0; i < sampleCount; i++) {
-    destination[i][0] = float(realSamples[i] - dc_real)*onebymax;
-    destination[i][1] = float(imagSamples[i] - dc_imag)*onebymax;
-  }
-}
-
-void Utility::short_complex_to_float_complex(int16_t source[][2],
-                                             fftwf_complex * destination,
-                                             uint32_t sampleCount,
-                                             uint32_t enob,
-                                             bool correctDCOffset)
-{
-  int16_t max = 1 << (enob - 1);
-  float onebymax = float(1.0/max);
-  int32_t dc_real = 0;
-  int32_t dc_imag = 0;
-  int16_t max_r = -1;
-  int16_t max_i = -1;
-  if (correctDCOffset) {
-    for (uint32_t i = 0; i < sampleCount; i++) {
-      dc_real += source[i][0];
-      dc_imag += source[i][1];
-      max_r = std::max<int16_t>(max_r, source[i][0]);
-      max_i = std::max<int16_t>(max_i, source[i][1]);
-    }
-    dc_real /= sampleCount;
-    dc_imag /= sampleCount;
-  }
-  for (uint32_t i = 0; i < sampleCount; i++) {
-    destination[i][0] = float(source[i][0] - dc_real)*onebymax;
-    destination[i][1] = float(source[i][1] - dc_imag)*onebymax;
-  }
-}
-
-void Utility::complex_to_magnitude(fftwf_complex * fft_data, 
-                                   float * magnitudes,
-                                   uint32_t sampleCount)
-{
-  double log10 = log2(10);
-  for (uint32_t i = 0; i < sampleCount; i++) {
-    float re = fft_data[i][0];
-    float im = fft_data[i][1];
-    float mag = sqrt(re * re + im * im) / sampleCount;
-    magnitudes[i] = 10 * log2(mag) / log10;
-  }
 }
 

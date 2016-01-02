@@ -17,8 +17,8 @@ class B210Source : public SignalSource
              double startFrequency, 
              double stopFrequency);
   virtual ~B210Source();
-  virtual bool GetNextSamples(SampleBuffer * sampleBuffer, double & centerFrequency);
-  virtual bool StartStreaming(uint32_t numIterations, SampleBuffer & sampleBuffer);
+  virtual bool GetNextSamples(SampleQueue * sampleQueue, double & centerFrequency);
+  virtual bool StartStreaming(uint32_t numIterations, SampleQueue & sampleQueue);
   virtual void ThreadWorker();
   virtual double Retune(double frequency);
 };

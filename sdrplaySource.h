@@ -19,13 +19,14 @@ class SdrplaySource : public SignalSource
 
  public:
   SdrplaySource(std::string args,
-               uint32_t sampleRate, 
-               uint32_t sampleCount, 
-               double startFrequency, 
-               double stopFrequency);
+                uint32_t sampleRate, 
+                uint32_t sampleCount, 
+                double startFrequency, 
+                double stopFrequency,
+                uint32_t bandWidth);
   virtual ~SdrplaySource();
-  virtual bool GetNextSamples(SampleBuffer * sampleBuffer, double_t & centerFrequency);
-  virtual bool StartStreaming(uint32_t numIterations, SampleBuffer & sampleBuffer);
+  virtual bool GetNextSamples(SampleQueue * sampleQueue, double_t & centerFrequency);
+  virtual bool StartStreaming(uint32_t numIterations, SampleQueue & sampleQueue);
   virtual void ThreadWorker();
   virtual double Retune(double frequency);
 };
