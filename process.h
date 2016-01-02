@@ -72,7 +72,9 @@ class ProcessSamples {
                  bool correctDCOffset,
                  Mode mode,
                  std::string fileNameBase = "",
-                 uint32_t dcIgnoreWindow = 0);
+                 uint32_t dcIgnoreWindow = 0,
+                 uint32_t preTrigger = 2,
+                 uint32_t postTrigger = 4);
   ~ProcessSamples();
   void Run(int16_t sample_buffer[][2], uint32_t centerFrequency);
   void RecordSamples(SignalSource * signalSource,

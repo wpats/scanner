@@ -45,6 +45,8 @@ int main(int argc, char *argv[])
   uint32_t dcIgnoreWindow = 0;
   uint32_t sampleCount;
   uint32_t bandWidth;
+  uint32_t preTrigger;
+  uint32_t postTrigger;
   namespace po = boost::program_options;
 
   po::options_description desc("Program options");
@@ -57,6 +59,8 @@ int main(int argc, char *argv[])
     ("mode,m", po::value<std::string>(&modeString)->default_value("time"), "processing mode 'time' or 'frequency'")
     ("niterations,n", po::value<uint32_t>(&num_iterations)->default_value(10), "Number of iterations")
     ("outfile,o", po::value<std::string>(&outFileName)->default_value(""), "File name base to record samples")
+    ("pre", po::value<uint32_t>(&preTrigger)->default_value(2), "Pre-trigger buffer save count")
+    ("post", po::value<uint32_t>(&postTrigger)->default_value(4), "Post-trigger buffer save count")
     ("samplerate,s", po::value<uint32_t>(&sample_rate)->default_value(8000000), "Sample rate")
     ("threshold,t", po::value<float>(&threshold)->default_value(10.0), "Threshold");
 
@@ -141,6 +145,11 @@ int main(int argc, char *argv[])
     return 1;
   }
 
+  if (source->GetFrequencyCount() > 1) {
+    preTrigger = 0;
+    postTrigger = 0;
+  }
+
   ProcessSamples process(sampleCount, 
                          sample_rate,
                          enob,
@@ -149,7 +158,9 @@ int main(int argc, char *argv[])
                          correctDCOffset, 
                          mode,
                          outFileName,
-                         dcIgnoreWindow);
+                         dcIgnoreWindow,
+                         preTrigger,
+                         postTrigger);
   SampleQueue sampleQueue(sampleKind, enob, sampleCount, 1024, outFileName != "");
   source->Start();
 

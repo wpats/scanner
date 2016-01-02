@@ -34,7 +34,6 @@ class SignalSource
   uint32_t GetIterationCount();
   double GetCurrentFrequency();
   double GetNextFrequency();
-  uint32_t GetFrequencyCount();
   
  public:
   SignalSource(uint32_t m_sampleRate,
@@ -49,6 +48,7 @@ class SignalSource
   virtual void ThreadWorker() = 0;
   virtual bool Stop();
   virtual double Retune(double frequency) = 0;
+  uint32_t GetFrequencyCount();
   void StopStreaming();
   void StartTimer();
   void StopTimer();

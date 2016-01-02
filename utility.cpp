@@ -67,7 +67,7 @@ void Utility::complex_to_magnitude(fftwf_complex * fft_data,
   for (uint32_t i = 0; i < sampleCount; i++) {
     float re = fft_data[i][0];
     float im = fft_data[i][1];
-    float mag = sqrt(re * re + im * im) / sampleCount;
+    float mag = sqrt(re * re + im * im); // / sampleCount;
     magnitudes[i] = 10 * log2(mag) / log10;
   }
 }

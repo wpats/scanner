@@ -64,7 +64,9 @@ ProcessSamples::ProcessSamples(uint32_t numSamples,
                                bool correctDCOffset,
                                Mode mode,
                                std::string fileNameBase,
-                               uint32_t dcIgnoreWindow)
+                               uint32_t dcIgnoreWindow,
+                               uint32_t preTrigger,
+                               uint32_t postTrigger)
   : m_sampleCount(numSamples),
     m_sampleRate(sampleRate),
     m_enob(enob),
@@ -77,8 +79,8 @@ ProcessSamples::ProcessSamples(uint32_t numSamples,
     m_mode(mode),
     m_sampleQueue(nullptr),
     m_fileNameBase(fileNameBase),
-    m_preTrigger(2),
-    m_postTrigger(4),
+    m_preTrigger(preTrigger),
+    m_postTrigger(postTrigger),
     m_writing(false),
     m_endSequenceId(0)
 {

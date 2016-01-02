@@ -176,10 +176,6 @@ int AirspySource::airspy_rx_callback(void * samples, int sample_count)
 {
   if (this->GetIterationCount() > 0) {
     double centerFrequency = this->GetCurrentFrequency();
-    double nextFrequency = this->GetNextFrequency();
-    if (this->GetFrequencyCount() > 1) {
-      this->Retune(nextFrequency);
-    }
     if (sample_count < this->m_sampleCount) {
       if (this->m_bufferIndex < this->m_sampleCount) {
         memcpy(this->m_buffer + this->m_bufferIndex, 
@@ -188,10 +184,18 @@ int AirspySource::airspy_rx_callback(void * samples, int sample_count)
         this->m_bufferIndex += sample_count;
       }
       if (this->m_bufferIndex == this->m_sampleCount) {
+        double nextFrequency = this->GetNextFrequency();
+        if (this->GetFrequencyCount() > 1) {
+          this->Retune(nextFrequency);
+        }
         this->m_sampleQueue->AppendSamples(this->m_buffer, centerFrequency);
       }
     } else {
       // sample_count >= this->m_sampleCount
+      double nextFrequency = this->GetNextFrequency();
+      if (this->GetFrequencyCount() > 1) {
+        this->Retune(nextFrequency);
+      }
       for (uint32_t count = 0; count < sample_count; count += this->m_sampleCount) {
         this->m_sampleQueue->AppendSamples(reinterpret_cast<fftwf_complex *>(samples) + count, 
                                            centerFrequency);
