@@ -12,6 +12,7 @@ class B210Source : public SignalSource
 
  public:
   B210Source(std::string args,
+             std::string spec,
              uint32_t sampleRate, 
              uint32_t sampleCount, 
              double startFrequency, 

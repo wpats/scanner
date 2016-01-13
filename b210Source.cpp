@@ -11,6 +11,7 @@
 #define HANDLE_ERROR(format, ...) this->handle_error(this->m_dev, status, format, ##__VA_ARGS__)
 
 B210Source::B210Source(std::string args,
+                       std::string spec,
                        uint32_t sampleRate, 
                        uint32_t sampleCount, 
                        double startFrequency, 
@@ -24,6 +25,10 @@ B210Source::B210Source(std::string args,
   std::cout << std::endl;
   std::cout << boost::format("Creating the usrp device with: %s...") % args << std::endl;
   this->m_usrp = uhd::usrp::multi_usrp::make(args);
+  if (spec != "") {
+    this->m_usrp->set_rx_subdev_spec(uhd::usrp::subdev_spec_t(spec));
+  }
+  this->m_usrp->set_rx_antenna("RX2");
   std::cout << boost::format("Using Device: %s") % this->m_usrp->get_pp_string() << std::endl;
 
   //detect which channels to use.
@@ -52,6 +57,7 @@ B210Source::B210Source(std::string args,
   // uhd::stream_args_t stream_args("sc16", "sc16"); //complex floats
   uhd::stream_args_t stream_args("fc32", "sc16"); //complex floats
   stream_args.channels = channel_nums;
+  stream_args.args["recv_frame_size"] = sampleCount;
   this->m_rx_stream = this->m_usrp->get_rx_stream(stream_args);
 
   // Tune to the first frequency.

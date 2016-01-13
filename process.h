@@ -40,29 +40,35 @@ class ProcessSamples {
                                time_t startTime, 
                                double_t centerFrequency);
   bool DoTimeDomainThresholding(fftwf_complex * inputSamples, double centerFrequency);
-  void ProcessWrite(bool doWrite, 
+  void ProcessWrite(uint32_t threadId,
+                    bool doWrite, 
                     double centerFrequency,
                     uint64_t sequenceId);
+  void ThreadWorker(uint32_t threadId);
 
+  static const uint32_t MAX_THREADS = 8;
   uint32_t m_sampleCount;
   uint32_t m_sampleRate;
   uint32_t m_enob;
   uint32_t m_fileCounter;
   uint32_t m_preTrigger;
   uint32_t m_postTrigger;
-  uint64_t m_endSequenceId;
+  uint64_t m_endSequenceId[MAX_THREADS];
   bool m_correctDCOffset;
   bool m_dcIgnoreWindow;
   bool m_writeSamples;
-  bool m_writing;
+  bool m_writing[MAX_THREADS];
   Mode m_mode;
   std::string m_fileNameBase;
   float m_threshold;
   FFT m_fft;
   FFTWindow m_fftWindow;
   SampleQueue * m_sampleQueue;
-  fftwf_complex * m_inputSamples;
-  fftwf_complex * m_fftOutputBuffer;
+  fftwf_complex * m_inputSamples[MAX_THREADS];
+  fftwf_complex * m_fftOutputBuffer[MAX_THREADS];
+  uint32_t m_threadCount;
+  std::thread * m_threads[MAX_THREADS];
+
  public:
   ProcessSamples(uint32_t numSamples, 
                  uint32_t sampleRate, 
@@ -71,6 +77,7 @@ class ProcessSamples {
                  gr::fft::window::win_type windowType,
                  bool correctDCOffset,
                  Mode mode,
+                 uint32_t threadCount = 1,
                  std::string fileNameBase = "",
                  uint32_t dcIgnoreWindow = 0,
                  uint32_t preTrigger = 2,

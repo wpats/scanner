@@ -189,6 +189,7 @@ int AirspySource::airspy_rx_callback(void * samples, int sample_count)
           this->Retune(nextFrequency);
         }
         this->m_sampleQueue->AppendSamples(this->m_buffer, centerFrequency);
+        this->m_bufferIndex = 0;
       }
     } else {
       // sample_count >= this->m_sampleCount

@@ -39,6 +39,7 @@ int main(int argc, char *argv[])
   double startFrequency;
   double stopFrequency;
   std::string args;
+  std::string spec;
   std::string outFileName;
   std::string modeString;
   uint32_t num_iterations;
@@ -62,6 +63,7 @@ int main(int argc, char *argv[])
     ("pre", po::value<uint32_t>(&preTrigger)->default_value(2), "Pre-trigger buffer save count")
     ("post", po::value<uint32_t>(&postTrigger)->default_value(4), "Post-trigger buffer save count")
     ("samplerate,s", po::value<uint32_t>(&sample_rate)->default_value(8000000), "Sample rate")
+    ("spec", po::value<std::string>(&spec)->default_value(""), "Sub-device of UHD device")
     ("threshold,t", po::value<float>(&threshold)->default_value(10.0), "Threshold");
 
   // Hidden options.
@@ -113,6 +115,7 @@ int main(int argc, char *argv[])
 #ifdef INCLUDE_B210
   } else if (args.find("b200") != std::string::npos) {
     source = new B210Source(args, 
+      spec,                      
       sample_rate, 
       sampleCount, 
       startFrequency, 
@@ -157,6 +160,7 @@ int main(int argc, char *argv[])
                          gr::fft::window::WIN_BLACKMAN_HARRIS,
                          correctDCOffset, 
                          mode,
+                         2,
                          outFileName,
                          dcIgnoreWindow,
                          preTrigger,

@@ -60,7 +60,7 @@ SdrplaySource::SdrplaySource(std::string args,
     m_bufferSize(0)
 {
   mir_sdr_ErrT status;
-  int gRdB = 60;
+  int gRdB = 50;
   // Check API version
   float version;
   status = mir_sdr_ApiVersion(&version);
@@ -107,8 +107,12 @@ SdrplaySource::SdrplaySource(std::string args,
   this->m_sample_buffer_q = new int16_t[bufferSize];
 
   // Configure DC tracking in tuner
-  status = mir_sdr_SetDcMode(4, 1);
-  // status = mir_sdr_SetDCTrackTime(63);
+  int dcMode = 3;
+  status = mir_sdr_SetDcMode(dcMode, 1);
+  HANDLE_ERROR("Failed to set DC mode %d: %%s\n", dcMode);
+  int dcTrackTime = 63;
+  status = mir_sdr_SetDcTrackTime(dcTrackTime);
+  HANDLE_ERROR("Failed to set DC track time %d: %%s\n", dcTrackTime);
 }
 
 SdrplaySource::~SdrplaySource()
