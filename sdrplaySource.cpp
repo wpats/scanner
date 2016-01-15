@@ -60,7 +60,7 @@ SdrplaySource::SdrplaySource(std::string args,
     m_bufferSize(0)
 {
   mir_sdr_ErrT status;
-  int gRdB = 50;
+  int gRdB = 60;
   // Check API version
   float version;
   status = mir_sdr_ApiVersion(&version);
@@ -107,11 +107,12 @@ SdrplaySource::SdrplaySource(std::string args,
   this->m_sample_buffer_q = new int16_t[bufferSize];
 
   // Configure DC tracking in tuner
-  int dcMode = 3;
-  status = mir_sdr_SetDcMode(dcMode, 1);
+  //int dcMode = 3;
+  int dcMode = 4;
+  // status = mir_sdr_SetDcMode(dcMode, 1);
   HANDLE_ERROR("Failed to set DC mode %d: %%s\n", dcMode);
   int dcTrackTime = 63;
-  status = mir_sdr_SetDcTrackTime(dcTrackTime);
+  // status = mir_sdr_SetDcTrackTime(dcTrackTime);
   HANDLE_ERROR("Failed to set DC track time %d: %%s\n", dcTrackTime);
 }
 
@@ -169,7 +170,8 @@ void SdrplaySource::ThreadWorker()
   while (this->GetIterationCount() > 0) {
     /* ... Handle signals at current frequency ... */
     double centerFrequency = this->GetCurrentFrequency();
-    for (uint32_t count = 0; 
+    uint32_t count;
+    for (count = 0; 
          count < this->m_sampleCount; 
          count += this->m_samplesPerPacket) {
       int grChanged = 0;
@@ -185,6 +187,7 @@ void SdrplaySource::ThreadWorker()
                    centerFrequency,
                    count);
     }
+    printf("count[%u] samplesPerPacket[%u]\n", count, this->m_samplesPerPacket);
     double nextFrequency = this->GetNextFrequency();
     if (this->GetFrequencyCount() > 1) {
       this->Retune(nextFrequency);

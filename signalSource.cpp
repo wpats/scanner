@@ -72,7 +72,7 @@ bool SignalSource::StartThread()
 {
   // NOTE: d_finished should be something explicitely thread safe. But since
   // nothing breaks on concurrent access, I'll just leave it as bool.
-  printf("Starting thread...\n");
+  printf("Starting source thread...\n");
   this->m_finished = false;
   this->m_thread = std::unique_ptr<std::thread>(new std::thread(&SignalSource::ThreadWorkerHelper, 
                                                                 this));
@@ -82,7 +82,7 @@ bool SignalSource::StartThread()
 bool SignalSource::StopThread()
 {
   if (this->m_thread != nullptr) {
-    printf("Stopping thread...\n");
+    printf("Stopping source thread...\n");
     // Shut down the thread
     this->m_finished = true;
     this->m_thread->join();

@@ -40,8 +40,8 @@ class ProcessSamples {
                                time_t startTime, 
                                double_t centerFrequency);
   bool DoTimeDomainThresholding(fftwf_complex * inputSamples, double centerFrequency);
-  void ProcessWrite(uint32_t threadId,
-                    bool doWrite, 
+  void UpdateEndSequenceId(uint64_t newEndSequenceId);
+  void ProcessWrite(bool doWrite, 
                     double centerFrequency,
                     uint64_t sequenceId);
   void ThreadWorker(uint32_t threadId);
@@ -53,11 +53,11 @@ class ProcessSamples {
   uint32_t m_fileCounter;
   uint32_t m_preTrigger;
   uint32_t m_postTrigger;
-  uint64_t m_endSequenceId[MAX_THREADS];
+  std::atomic<uint64_t> m_endSequenceId;
   bool m_correctDCOffset;
   bool m_dcIgnoreWindow;
   bool m_writeSamples;
-  bool m_writing[MAX_THREADS];
+  std::atomic<bool> m_writing;
   Mode m_mode;
   std::string m_fileNameBase;
   float m_threshold;
@@ -75,7 +75,6 @@ class ProcessSamples {
                  uint32_t enob,
                  float threshold, 
                  gr::fft::window::win_type windowType,
-                 bool correctDCOffset,
                  Mode mode,
                  uint32_t threadCount = 1,
                  std::string fileNameBase = "",

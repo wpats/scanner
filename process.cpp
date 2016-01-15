@@ -61,7 +61,6 @@ ProcessSamples::ProcessSamples(uint32_t numSamples,
                                uint32_t enob,
                                float threshold,
                                gr::fft::window::win_type windowType,
-                               bool correctDCOffset,
                                Mode mode,
                                uint32_t threadCount,
                                std::string fileNameBase,
@@ -74,7 +73,7 @@ ProcessSamples::ProcessSamples(uint32_t numSamples,
     m_fileCounter(0),
     m_threshold(threshold),
     m_fftWindow(windowType, numSamples),
-    m_correctDCOffset(correctDCOffset),
+    m_correctDCOffset(false),
     m_dcIgnoreWindow(dcIgnoreWindow),
     m_fft(numSamples),
     m_mode(mode),
@@ -82,13 +81,13 @@ ProcessSamples::ProcessSamples(uint32_t numSamples,
     m_fileNameBase(fileNameBase),
     m_preTrigger(preTrigger),
     m_postTrigger(postTrigger),
+    m_writing(false),
+    m_endSequenceId(0),
     m_threadCount(threadCount)
 {
   assert(mode > Illegal && mode <= FrequencyDomain);
   assert(threadCount <= MAX_THREADS);
   for (uint32_t threadId = 0; threadId < threadCount; threadId++) {
-    this->m_writing[threadId] = false;
-    this->m_endSequenceId[threadId] = 0;
     this->m_inputSamples[threadId] = 
       reinterpret_cast<fftwf_complex *>(fftwf_alloc_complex(numSamples));
     this->m_fftOutputBuffer[threadId] = 
@@ -216,23 +215,35 @@ bool ProcessSamples::DoTimeDomainThresholding(fftwf_complex * inputSamples,
   return false;
 }
 
-void ProcessSamples::ProcessWrite(uint32_t threadId,
-                                  bool doWrite, 
+void ProcessSamples::UpdateEndSequenceId(uint64_t newEndSequenceId)
+{
+  while (true) {
+    uint64_t currentId = this->m_endSequenceId;
+    uint64_t maxId = std::max<uint64_t>(newEndSequenceId, currentId);
+    if (this->m_endSequenceId.compare_exchange_strong(currentId, maxId)) {
+      break;
+    }
+  }
+}
+
+void ProcessSamples::ProcessWrite(bool doWrite, 
                                   double centerFrequency,
                                   uint64_t sequenceId)
 {
-  if (this->m_writing[threadId]) {
+  if (this->m_writing) {
     if (doWrite) {
-      this->m_endSequenceId[threadId] = sequenceId + this->m_postTrigger + 1;
-    } else if (sequenceId == this->m_endSequenceId[threadId]) {
+      uint64_t newEndSequenceId = sequenceId + this->m_postTrigger + 1;
+      this->UpdateEndSequenceId(newEndSequenceId);
+    } else if (sequenceId == this->m_endSequenceId) {
       this->m_sampleQueue->EndWrite(sequenceId);
-      this->m_writing[threadId] = false;
+      this->m_writing = false;
     }
   } else if (doWrite) {
     if (this->m_fileNameBase != "") {
       this->WriteSamplesToFile(sequenceId, centerFrequency);
-      this->m_writing[threadId] = true;
-      this->m_endSequenceId[threadId] = sequenceId + this->m_postTrigger + 1;
+      this->m_writing = true;
+      uint64_t newEndSequenceId = sequenceId + this->m_postTrigger + 1;
+      this->UpdateEndSequenceId(newEndSequenceId);
     }
   }
 }
@@ -242,7 +253,6 @@ void ProcessSamples::ThreadWorker(uint32_t threadId)
   double centerFrequency;
   uint32_t i = 0;
   SampleQueue::MessageType * message;
-  this->m_writing[threadId] = false;
   bool doWrite = false;
   uint64_t sequenceId;
   while (message = this->m_sampleQueue->GetNextSamples()) {
@@ -264,12 +274,12 @@ void ProcessSamples::ThreadWorker(uint32_t threadId)
       printf(" Sequence[%u, %llu]\n", threadId, sequenceId);
     }
 
-    this->ProcessWrite(threadId, doWrite, centerFrequency, sequenceId);
+    this->ProcessWrite(doWrite, centerFrequency, sequenceId);
     this->m_sampleQueue->MessageProcessed(message);
   }
   // Shutdown writing gracefully.
-  this->m_endSequenceId[threadId] = sequenceId;
-  this->ProcessWrite(threadId, false, centerFrequency, sequenceId);
+  this->UpdateEndSequenceId(sequenceId);
+  this->ProcessWrite(false, centerFrequency, sequenceId);
 }
 
 bool ProcessSamples::StartProcessing(SampleQueue & sampleQueue)
@@ -285,39 +295,7 @@ bool ProcessSamples::StartProcessing(SampleQueue & sampleQueue)
     this->m_threads[threadId]->join();
     printf("Stopped process thread %u\n", threadId);
   }
+
   return true;
-
-#if 0
-  double centerFrequency;
-  uint32_t i = 0;
-  this->m_sampleQueue = &sampleQueue;
-  SampleQueue::MessageType * message;
-  this->m_writing = false;
-  bool doWrite = false;
-  uint64_t sequenceId;
-  while (message = sampleQueue.GetNextSamples()) {
-    sequenceId = message->GetHeader().m_sequenceId;
-    double centerFrequency = message->GetHeader().m_frequency;
-    if (this->m_mode == TimeDomain) {
-      doWrite = this->DoTimeDomainThresholding(message->GetData(), centerFrequency);
-    } else if (this->m_mode == FrequencyDomain) {
-      memcpy(this->m_inputSamples, message->GetData(), sizeof(fftwf_complex)*this->m_sampleCount);
-      this->m_fftWindow.apply(this->m_inputSamples);
-      this->m_fft.process(this->m_fftOutputBuffer, this->m_inputSamples);
-      doWrite = this->process_fft(this->m_fftOutputBuffer, centerFrequency);
-    }
-    if (doWrite) {
-      printf(" Sequence Id[%lu]\n", sequenceId);
-    }
-
-    this->ProcessWrite(doWrite, centerFrequency, sequenceId);
-    sampleQueue.MessageProcessed(message);
-  }
-  // Shutdown writing gracefully.
-  this->m_endSequenceId = sequenceId;
-  this->ProcessWrite(false, centerFrequency, sequenceId);
-  return true;
-#endif
-
 }
 

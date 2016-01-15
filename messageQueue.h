@@ -60,7 +60,8 @@ class MessageQueue
   uint32_t enob;
   void SynchronizedAppend(T * data, double centerFrequency) {
     MessageType * message = this->m_memoryPool.Allocate();
-    memcpy(message->GetData(), data, sizeof(fftwf_complex) * this->m_sampleCount);
+    memset(message->GetData(), 0, sizeof(T) * this->m_sampleCount);
+    memcpy(message->GetData(), data, sizeof(T) * this->m_sampleCount);
     MessageHeader & header = message->GetHeader();
     header.m_frequency = centerFrequency;
     header.m_kind = MessageHeader::ProcessData;
@@ -108,6 +109,8 @@ class MessageQueue
           }
           MessageType * message = *iter++;
           if (message->GetHeader().m_sequenceId < this->m_writeEndSequenceId) {
+            printf("Writing %lu\n", message->GetHeader().m_sequenceId);
+            //memset(message->GetData(), 0, sizeof(fftwf_complex) * this->m_sampleCount);
             fwrite(message->GetData(), 
                    sizeof(fftwf_complex), 
                    this->m_sampleCount, 
@@ -126,6 +129,7 @@ class MessageQueue
                uint32_t enob, 
                uint32_t sampleCount, 
                uint32_t bufferCount, 
+               bool correctDCOffset,
                bool doWrite)
     : m_sampleCount(sampleCount),
       m_buffer(bufferCount),
@@ -135,10 +139,11 @@ class MessageQueue
       m_kind(kind),
       m_done(false),
       m_nextBufferSequenceId(0),
-      m_writeFile(nullptr),
+      m_correctDCOffset(correctDCOffset),
       m_writeStartSequenceId(0),
       m_writeEndSequenceId(0),
-      m_doWrite(doWrite)
+      m_doWrite(doWrite),
+      m_writeFile(nullptr)
   {
     assert(kind > Illegal && kind <= FloatComplex);
     this->m_floatComplex = new fftwf_complex[sampleCount];
@@ -237,7 +242,7 @@ class MessageQueue
   }
   
   void BeginWrite(uint64_t startSequenceId, std::string fileName) {
-    printf("BeginWrite %lu\n", startSequenceId);
+    printf("BeginWrite %s: %lu\n", fileName.c_str(), startSequenceId);
     std::unique_lock<std::mutex> locker(this->m_writeMutex);
     this->m_writeFile = fopen(fileName.c_str(), "w");
     this->m_writeStartSequenceId = startSequenceId;

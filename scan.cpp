@@ -108,7 +108,7 @@ int main(int argc, char *argv[])
                                sampleCount, 
                                startFrequency, 
                                stopFrequency);
-    correctDCOffset = true;
+    correctDCOffset = false;
     if (dcIgnoreWindow == 0) {
       dcIgnoreWindow = 7;
     }
@@ -140,7 +140,7 @@ int main(int argc, char *argv[])
       startFrequency, 
       stopFrequency,
       bandWidth);
-    correctDCOffset = true;
+    correctDCOffset = false;
     sampleKind = SampleQueue::Short;
   } else {
     std::cout << "Missing source type argument" << std::endl;
@@ -158,14 +158,13 @@ int main(int argc, char *argv[])
                          enob,
                          threshold, 
                          gr::fft::window::WIN_BLACKMAN_HARRIS,
-                         correctDCOffset, 
                          mode,
                          2,
                          outFileName,
                          dcIgnoreWindow,
                          preTrigger,
                          postTrigger);
-  SampleQueue sampleQueue(sampleKind, enob, sampleCount, 1024, outFileName != "");
+  SampleQueue sampleQueue(sampleKind, enob, sampleCount, 1024, correctDCOffset, outFileName != "");
   source->Start();
 
   struct timespec start, stop;

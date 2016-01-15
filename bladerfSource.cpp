@@ -237,23 +237,22 @@ void BladerfSource::ThreadWorker()
   int status;
   uint32_t delta = 100;
   int16_t sample_buffer[this->m_sampleCount][2];
-
+  /* Retrieve the current timestamp */
+  struct bladerf_metadata metadata;
+  memset(&metadata, 0, sizeof(metadata));
+  status = bladerf_get_timestamp(this->m_dev, 
+                                 BLADERF_MODULE_RX, 
+                                 &metadata.timestamp);
+  HANDLE_ERROR("Failed to get current RX timestamp: %s\n");
   while (this->GetIterationCount() > 0) {
     double centerFrequency = this->GetCurrentFrequency();
-    /* Retrieve the current timestamp */
-    struct bladerf_metadata metadata;
-    memset(&metadata, 0, sizeof(metadata));
-    status = bladerf_get_timestamp(this->m_dev, 
-                                   BLADERF_MODULE_RX, 
-                                   &metadata.timestamp);
-    HANDLE_ERROR("Failed to get current RX timestamp: %s\n");
     //fprintf(stderr, "Current RX timestamp: 0x%016lx ", metadata.timestamp);
 
     /* Schedule the RX to be ~1 ms in the future */
     struct bladerf_metadata metadata2;
     memset(&metadata2, 0, sizeof(metadata2));
-    // metadata2.timestamp += this->m_sampleRate;
-    // fprintf(stderr, " 0x%016lx ", metadata2.timestamp);
+    //metadata2.timestamp = metadata.timestamp; // + this->m_sampleRate/1000;
+    //fprintf(stderr, " 0x%016lx ", metadata2.timestamp);
     metadata2.flags = BLADERF_META_FLAG_RX_NOW;
 
     // sleep(0.010);
@@ -277,6 +276,11 @@ void BladerfSource::ThreadWorker()
     if (this->GetFrequencyCount() > 1) {
       this->Retune(nextFrequency);
     }
+    /* Retrieve the current timestamp */
+    status = bladerf_get_timestamp(this->m_dev, 
+                                   BLADERF_MODULE_RX, 
+                                   &metadata.timestamp);
+    HANDLE_ERROR("Failed to get current RX timestamp: %s\n");
     this->m_sampleQueue->AppendSamples(sample_buffer, centerFrequency);
   }
   return;
