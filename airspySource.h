@@ -11,6 +11,7 @@ class AirspySource : public SignalSource
   } m_streamingState;
   struct airspy_device * m_dev;
   bool m_done_streaming;
+  bool m_didRetune;
   fftwf_complex * m_buffer;
   uint32_t m_bufferIndex;
   void handle_error(int status, const char * format, ...);

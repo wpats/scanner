@@ -262,7 +262,7 @@ class MessageQueue
     {
       std::unique_lock<std::mutex> locker(this->m_mutex);
       this->m_done = true;
-      this->m_conditionEmpty.notify_one();
+      this->m_conditionEmpty.notify_all();
     }
     // Notify the write thread.
     if (this->m_doWrite) {

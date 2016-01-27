@@ -27,7 +27,7 @@ SignalSource::SignalSource(uint32_t sampleRate,
   uint32_t numFrequencies = ceil((stopFrequency - startFrequency)/sampleRate);
   this->m_frequencies.resize(numFrequencies);
   for (uint32_t i = 0; i < numFrequencies; i++) {
-    this->m_frequencies[i] = startFrequency + i * sampleRate + sampleRate/2;
+    this->m_frequencies[i] = startFrequency + i * double(sampleRate) + double(sampleRate)/2;
     fprintf(stderr, "Frequency %d: %.0f\n", i, this->m_frequencies[i]);
   }
 }

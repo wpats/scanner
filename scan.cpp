@@ -108,9 +108,9 @@ int main(int argc, char *argv[])
                                sampleCount, 
                                startFrequency, 
                                stopFrequency);
-    correctDCOffset = false;
+    correctDCOffset = true;
     if (dcIgnoreWindow == 0) {
-      dcIgnoreWindow = 7;
+      dcIgnoreWindow = 25;
     }
 #ifdef INCLUDE_B210
   } else if (args.find("b200") != std::string::npos) {

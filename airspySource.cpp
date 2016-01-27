@@ -37,7 +37,8 @@ AirspySource::AirspySource(std::string args,
   : SignalSource(sampleRate, sampleCount, startFrequency, stopFrequency),
     m_dev(nullptr),
     m_streamingState(Illegal),
-    m_bufferIndex(0)
+    m_bufferIndex(0),
+    m_didRetune(false)
 {
   this->m_buffer = new fftwf_complex[sampleCount];
   int status;
@@ -176,29 +177,41 @@ int AirspySource::airspy_rx_callback(void * samples, int sample_count)
 {
   if (this->GetIterationCount() > 0) {
     double centerFrequency = this->GetCurrentFrequency();
-    if (sample_count < this->m_sampleCount) {
+    uint32_t startIndex = this->m_bufferIndex;
+    uint32_t count = sample_count;
+    if (this->m_didRetune) {
+      // Re-tune time is 5ms. So need to discard 5ms worth of samples.
+      uint32_t discardCount = this->m_sampleRate/200;
+      this->m_didRetune = false;
+      startIndex += discardCount;
+      count -= discardCount;
+    }
+    count = std::min<uint32_t>(count, this->m_sampleCount - this->m_bufferIndex);
+    if (count < this->m_sampleCount) {
       if (this->m_bufferIndex < this->m_sampleCount) {
-        memcpy(this->m_buffer + this->m_bufferIndex, 
+        memcpy(this->m_buffer + startIndex,
                samples, 
-               sizeof(fftwf_complex) * sample_count);
-        this->m_bufferIndex += sample_count;
+               sizeof(fftwf_complex) * count);
+        this->m_bufferIndex += count;
       }
       if (this->m_bufferIndex == this->m_sampleCount) {
         double nextFrequency = this->GetNextFrequency();
         if (this->GetFrequencyCount() > 1) {
           this->Retune(nextFrequency);
+          this->m_didRetune = true;
         }
         this->m_sampleQueue->AppendSamples(this->m_buffer, centerFrequency);
         this->m_bufferIndex = 0;
       }
     } else {
-      // sample_count >= this->m_sampleCount
+      // count >= this->m_sampleCount
       double nextFrequency = this->GetNextFrequency();
       if (this->GetFrequencyCount() > 1) {
         this->Retune(nextFrequency);
+        this->m_didRetune = true;
       }
-      for (uint32_t count = 0; count < sample_count; count += this->m_sampleCount) {
-        this->m_sampleQueue->AppendSamples(reinterpret_cast<fftwf_complex *>(samples) + count, 
+      for (uint32_t i = 0; i < count/this->m_sampleCount; i++) {
+        this->m_sampleQueue->AppendSamples(reinterpret_cast<fftwf_complex *>(samples) + startIndex + i * this->m_sampleCount, 
                                            centerFrequency);
       }
     }
