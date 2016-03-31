@@ -31,6 +31,34 @@ void Utility::short_complex_to_float_complex(int16_t * realSamples,
   }
 }
 
+void Utility::byte_complex_to_float_complex(int8_t source[][2],
+                                            fftwf_complex * destination,
+                                            uint32_t sampleCount,
+                                            uint32_t enob,
+                                            bool correctDCOffset)
+{
+  int8_t max = 1 << (enob - 1);
+  float onebymax = float(1.0/max);
+  int32_t dc_real = 0;
+  int32_t dc_imag = 0;
+  int8_t max_r = -1;
+  int8_t max_i = -1;
+  if (correctDCOffset) {
+    for (uint32_t i = 0; i < sampleCount; i++) {
+      dc_real += source[i][0];
+      dc_imag += source[i][1];
+      max_r = std::max<int8_t>(max_r, source[i][0]);
+      max_i = std::max<int8_t>(max_i, source[i][1]);
+    }
+    dc_real /= sampleCount;
+    dc_imag /= sampleCount;
+  }
+  for (uint32_t i = 0; i < sampleCount; i++) {
+    destination[i][0] = float(source[i][0] - dc_real)*onebymax;
+    destination[i][1] = float(source[i][1] - dc_imag)*onebymax;
+  }
+}
+
 void Utility::short_complex_to_float_complex(int16_t source[][2],
                                              fftwf_complex * destination,
                                              uint32_t sampleCount,

@@ -62,7 +62,8 @@ AirspySource::AirspySource(std::string args,
 #endif
   
   this->set_sample_rate(sampleRate);
-    
+
+#if 0    
   /* Parameter value shall be between 0 and 15 */
   airspy_set_lna_gain(this->m_dev, 7);
 
@@ -71,6 +72,7 @@ AirspySource::AirspySource(std::string args,
 
   /* Parameter value shall be between 0 and 15 */
   airspy_set_vga_gain(this->m_dev, 7);
+#endif
 
   /* Parameter value:
      0=Disable LNA Automatic Gain Control
@@ -84,7 +86,7 @@ AirspySource::AirspySource(std::string args,
   */
   airspy_set_mixer_agc(this->m_dev, 0);
 
-  status = airspy_set_linearity_gain(this->m_dev, 12);
+  status = airspy_set_linearity_gain(this->m_dev, 10);
   HANDLE_ERROR("Failed to set linearity gain string: %%s\n");
 
   /* Parameter value shall be 0=Disable BiasT or 1=Enable BiasT */
@@ -175,8 +177,10 @@ int AirspySource::_airspy_rx_callback(airspy_transfer* transfer)
 
 int AirspySource::airspy_rx_callback(void * samples, int sample_count)
 {
-  if (this->GetIterationCount() > 0) {
+  time_t startTime;
+  if (!this->GetIsDone()) { 
     double centerFrequency = this->GetCurrentFrequency();
+    bool isScanStart = this->GetIsScanStart();
     uint32_t startIndex = this->m_bufferIndex;
     uint32_t count = sample_count;
     if (this->m_didRetune) {
@@ -185,6 +189,7 @@ int AirspySource::airspy_rx_callback(void * samples, int sample_count)
       this->m_didRetune = false;
       startIndex += discardCount;
       count -= discardCount;
+      startTime = time(NULL);
     }
     count = std::min<uint32_t>(count, this->m_sampleCount - this->m_bufferIndex);
     if (count < this->m_sampleCount) {
@@ -200,7 +205,9 @@ int AirspySource::airspy_rx_callback(void * samples, int sample_count)
           this->Retune(nextFrequency);
           this->m_didRetune = true;
         }
-        this->m_sampleQueue->AppendSamples(this->m_buffer, centerFrequency);
+        this->m_sampleQueue->AppendSamples(this->m_buffer, 
+                                           centerFrequency,
+                                           (isScanStart ? startTime : 0));
         this->m_bufferIndex = 0;
       }
     } else {
@@ -212,7 +219,8 @@ int AirspySource::airspy_rx_callback(void * samples, int sample_count)
       }
       for (uint32_t i = 0; i < count/this->m_sampleCount; i++) {
         this->m_sampleQueue->AppendSamples(reinterpret_cast<fftwf_complex *>(samples) + startIndex + i * this->m_sampleCount, 
-                                           centerFrequency);
+                                           centerFrequency,
+                                           (isScanStart ? startTime : 0));
       }
     }
   } else {
@@ -242,10 +250,8 @@ bool AirspySource::GetNextSamples(SampleQueue * sampleQueue, double & centerFreq
 
 bool AirspySource::StartStreaming(uint32_t numIterations, SampleQueue & sampleQueue)
 {
-  this->m_iterationCount = numIterations;
-  this->m_sampleQueue = &sampleQueue;
+  auto result = this->StartThread(numIterations, sampleQueue);
   this->Start();
-  auto result = this->StartThread();
   return result;
 }
 

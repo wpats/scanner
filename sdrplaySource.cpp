@@ -151,15 +151,14 @@ bool SdrplaySource::GetNextSamples(SampleQueue *  sampleQueue, double & centerFr
   }
   this->m_sampleQueue->AppendSamples(this->m_sample_buffer_i, 
                                       this->m_sample_buffer_q,
-                                      centerFrequency);
+                                     centerFrequency,
+                                     0);
   return true;
 }
 
 bool SdrplaySource::StartStreaming(uint32_t numIterations, SampleQueue & sampleQueue)
 {
-  this->m_iterationCount = numIterations;
-  this->m_sampleQueue = &sampleQueue;
-  auto result = this->StartThread();
+  auto result = this->StartThread(numIterations, sampleQueue);
   return result;
 }
 
@@ -167,10 +166,13 @@ void SdrplaySource::ThreadWorker()
 {
   mir_sdr_ErrT status;
 
-  while (this->GetIterationCount() > 0) {
+  while (!this->GetIsDone()) { 
     /* ... Handle signals at current frequency ... */
     double centerFrequency = this->GetCurrentFrequency();
     uint32_t count;
+    time_t startTime;
+    startTime = time(NULL);
+    bool isScanStart = this->GetIsScanStart();
     for (count = 0; 
          count < this->m_sampleCount; 
          count += this->m_samplesPerPacket) {
@@ -187,14 +189,15 @@ void SdrplaySource::ThreadWorker()
                    centerFrequency,
                    count);
     }
-    printf("count[%u] samplesPerPacket[%u]\n", count, this->m_samplesPerPacket);
+    //printf("count[%u] samplesPerPacket[%u]\n", count, this->m_samplesPerPacket);
     double nextFrequency = this->GetNextFrequency();
     if (this->GetFrequencyCount() > 1) {
       this->Retune(nextFrequency);
     }
     this->m_sampleQueue->AppendSamples(this->m_sample_buffer_i, 
                                        this->m_sample_buffer_q,
-                                       centerFrequency);
+                                       centerFrequency,
+                                       (isScanStart ? startTime : 0));
   }
   return;
 }

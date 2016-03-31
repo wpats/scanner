@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <memory>
 #include <thread>
+#include "frequencyTable.h"
 
 class SignalSource
 {
@@ -13,6 +14,7 @@ class SignalSource
   double m_elapsedTime;
   uint32_t m_retuneTimeIndex;
   uint32_t m_getSamplesTimeIndex;
+  bool m_isDone; // Set to true to terminate
   bool m_finished;
   std::unique_ptr<std::thread> m_thread;
   std::vector<double> m_retuneTime;
@@ -24,17 +26,17 @@ class SignalSource
   uint32_t m_sampleCount;
   double m_startFrequency;
   double m_stopFrequency;
-  std::vector<double> m_frequencies;
-  uint32_t m_frequencyIndex;
-  uint32_t m_iterationCount;
+  FrequencyTable m_frequencyTable;
+  uint32_t m_iterationLimit;
   SampleQueue * m_sampleQueue;
   bool StopThread();
-  bool StartThread();
+  bool StartThread(uint32_t numIterations, SampleQueue & sampleQueue);
   void ThreadWorkerHelper();
   uint32_t GetIterationCount();
-  double GetCurrentFrequency();
-  double GetNextFrequency();
-  
+  double GetCurrentFrequency(void ** pinfo = nullptr);
+  double GetNextFrequency(void ** pinfo = nullptr);
+  bool GetIsDone();
+
  public:
   SignalSource(uint32_t m_sampleRate,
                uint32_t m_sampleCount,
@@ -49,7 +51,9 @@ class SignalSource
   virtual bool Stop();
   virtual double Retune(double frequency) = 0;
   uint32_t GetFrequencyCount();
+  bool GetIsScanStart();
   void StopStreaming();
+  void SetIsDone();
   void StartTimer();
   void StopTimer();
   void AddRetuneTime();

@@ -1,4 +1,5 @@
 
+#include <uhd.h>
 #include <uhd/usrp/multi_usrp.hpp>
 #include <boost/format.hpp>
 #include <boost/algorithm/string.hpp>
@@ -19,8 +20,6 @@ B210Source::B210Source(std::string args,
   : SignalSource(sampleRate, sampleCount, startFrequency, stopFrequency),
     m_verbose(false)
 {
-  this->m_frequencyIncrement = sampleRate;
-  std::cout << "Frequency increment = " << this->m_frequencyIncrement << std::endl;
   //create a usrp device
   std::cout << std::endl;
   std::cout << boost::format("Creating the usrp device with: %s...") % args << std::endl;
@@ -70,7 +69,8 @@ B210Source::B210Source(std::string args,
 
 B210Source::~B210Source()
 {
-
+  //uhd_rx_streamer_free(&(*this->m_rx_stream));
+  //uhd_usrp_free(&(*this->m_usrp));
 }
 
 double B210Source::Retune(double currentFrequency)
@@ -159,15 +159,13 @@ bool B210Source::GetNextSamples(SampleQueue * sampleQueue, double & centerFreque
 
 bool B210Source::StartStreaming(uint32_t numIterations, SampleQueue & sampleQueue)
 {
-  this->m_iterationCount = numIterations;
-  this->m_sampleQueue = &sampleQueue;
-  auto result = this->StartThread();
+  auto result = this->StartThread(numIterations, sampleQueue);
   return result;
 }
 
 void B210Source::ThreadWorker()
 {
-  while (this->GetIterationCount() > 0) {
+  while (!this->GetIsDone()) { 
     // Set the centerFrequency.
     double centerFrequency = this->GetCurrentFrequency();
 
@@ -185,6 +183,9 @@ void B210Source::ThreadWorker()
     uhd::rx_metadata_t md;
     double timeout = 0.1; //timeout (delay before receive + padding)
     uint32_t nSamples = 0; //number of accumulated samples
+
+    time_t startTime;
+    startTime = time(NULL);
     while(nSamples < this->m_sampleCount) {
       // setup the buffer.
       buffs[0] = &sample_buffer[nSamples][0];
@@ -216,10 +217,13 @@ void B210Source::ThreadWorker()
       std::cerr << "Receive timeout before all samples received..." << std::endl;
       exit(1);
     }
+    bool isScanStart = this->GetIsScanStart();
     double nextFrequency = this->GetNextFrequency();
     if (this->GetFrequencyCount() > 1) {
       this->Retune(nextFrequency);
     }
-    this->m_sampleQueue->AppendSamples(sample_buffer, centerFrequency);
+    this->m_sampleQueue->AppendSamples(sample_buffer, 
+                                       centerFrequency, 
+                                       (isScanStart ? startTime : 0));
   }
 }

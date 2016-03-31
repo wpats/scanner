@@ -33,10 +33,9 @@ void FFTWindow::apply(fftwf_complex * samples)
                                 this->m_numSamples);
 }
 
-bool ProcessSamples::process_fft(fftwf_complex * fft_data, 
-                                 uint32_t center_frequency)
+bool ProcessSamples::process_fft(fftwf_complex * fft_data, SampleQueue::MessageHeader * header)
 {
-  uint32_t start_frequency = center_frequency - this->m_sampleRate/2;
+  uint32_t start_frequency = header->m_frequency - this->m_sampleRate/2;
   uint32_t bin_step = this->m_sampleRate/this->m_sampleCount;
   float magnitudes[this->m_sampleCount];
 
@@ -47,8 +46,12 @@ bool ProcessSamples::process_fft(fftwf_complex * fft_data,
     if (j < this->m_dcIgnoreWindow || (this->m_sampleCount - j < this->m_dcIgnoreWindow)) {
       continue;
     }
+    if (i < uint32_t(0.05 * this->m_sampleCount) || i > uint32_t(0.95 * this->m_sampleCount)) {
+      continue;
+    }
     if (magnitudes[j] > this->m_threshold) {
       uint32_t frequency = start_frequency + i*bin_step;
+      // printf("Sequence[%llu] ", header->m_sequenceId);
       printf("freq %u power_db %f\n", frequency, magnitudes[j]);
       trigger = true;
     }
@@ -127,7 +130,22 @@ void ProcessSamples::Run(int16_t sample_buffer[][2], uint32_t centerFrequency)
   if (this->m_mode == FrequencyDomain) {
     this->m_fftWindow.apply(this->m_inputSamples[0]);
     this->m_fft.process(this->m_fftOutputBuffer[0], this->m_inputSamples[0]);
-    this->process_fft(this->m_fftOutputBuffer[0], centerFrequency);
+    // TODO: Materialize a MessageHeader struct here.
+    this->process_fft(this->m_fftOutputBuffer[0], nullptr);
+  }
+}
+
+void ProcessSamples::TimeToString(time_t time, char * buffer, uint32_t length)
+{
+  const char timeformat[] = "%Y%m%d-%T";
+  struct tm * timeStruct = localtime(&time);
+  if (timeStruct == nullptr) {
+    perror("localtime");
+    exit(1);
+  }
+  if (strftime(buffer, length, timeformat, timeStruct) == 0) {
+    fprintf(stderr, "strftime returned 0");
+    exit(1);
   }
 }
 
@@ -136,18 +154,10 @@ std::string ProcessSamples::GenerateFileName(std::string fileNameBase,
                                              double_t centerFrequency)
 {
   char buffer[256];
-  const char timeformat[] = "-%Y%m%d-%T";
-  struct tm * timeStruct = localtime(&startTime);
-  if (timeStruct == nullptr) {
-    perror("localtime");
-    exit(1);
-  }
+  char timeBuffer[64];
   strcpy(buffer, fileNameBase.c_str());
-  uint32_t length = strlen(buffer);
-  if (strftime(buffer+length, sizeof(buffer)-length, timeformat, timeStruct) == 0) {
-    fprintf(stderr, "strftime returned 0");
-    exit(1);
-  }
+  this->TimeToString(startTime, timeBuffer, std::extent<decltype(timeBuffer)>::value);
+  strcat(buffer, timeBuffer);
   sprintf(buffer+strlen(buffer), "-%.0f-%u", centerFrequency, ++this->m_fileCounter);
   return std::string(buffer);
 }
@@ -183,7 +193,7 @@ void ProcessSamples::RecordSamples(SignalSource * signalSource,
 }
 
 bool ProcessSamples::DoTimeDomainThresholding(fftwf_complex * inputSamples,
-                                              double centerFrequency)
+                                              SampleQueue::MessageHeader * header)
 {
   double log10 = log2(10);
   float maxMagnitude = std::numeric_limits<float>::min();
@@ -202,16 +212,14 @@ bool ProcessSamples::DoTimeDomainThresholding(fftwf_complex * inputSamples,
   }  
   
   if (maxMagnitude >= this->m_threshold) {
-      printf("Max signal %f above threshold %f frequency %.0f", 
-             maxMagnitude, 
-             this->m_threshold,
-             centerFrequency);
-      return true;
+    printf("Sequence[%llu]: ", header->m_sequenceId);
+    printf("Max signal %f above threshold %f frequency %.0f, min %f\n", 
+           maxMagnitude, 
+           this->m_threshold,
+           header->m_frequency,
+           minMagnitude);
+    return true;
   }
-  // printf("max magnitude = %f, min = %f, allZeros = %d\n", 
-  // maxMagnitude, 
-  // minMagnitude, 
-  // allZeros);
   return false;
 }
 
@@ -256,10 +264,17 @@ void ProcessSamples::ThreadWorker(uint32_t threadId)
   bool doWrite = false;
   uint64_t sequenceId;
   while (message = this->m_sampleQueue->GetNextSamples()) {
+    if (message->m_header.m_time != 0) {
+      char timeBuffer[64];
+      this->TimeToString(message->m_header.m_time, 
+                         timeBuffer, 
+                         std::extent<decltype(timeBuffer)>::value);
+      printf("Start scan at %s\n", timeBuffer);
+    }
     sequenceId = message->GetHeader().m_sequenceId;
     double centerFrequency = message->GetHeader().m_frequency;
     if (this->m_mode == TimeDomain) {
-      doWrite = this->DoTimeDomainThresholding(message->GetData(), centerFrequency);
+      doWrite = this->DoTimeDomainThresholding(message->GetData(), &message->m_header);
     } else if (this->m_mode == FrequencyDomain) {
       memcpy(this->m_inputSamples[threadId], 
              message->GetData(), 
@@ -267,11 +282,7 @@ void ProcessSamples::ThreadWorker(uint32_t threadId)
       this->m_fftWindow.apply(this->m_inputSamples[threadId]);
       this->m_fft.process(this->m_fftOutputBuffer[threadId], 
                           this->m_inputSamples[threadId]);
-      doWrite = this->process_fft(this->m_fftOutputBuffer[threadId], 
-                                  centerFrequency);
-    }
-    if (doWrite) {
-      printf(" Sequence[%u, %llu]\n", threadId, sequenceId);
+      doWrite = this->process_fft(this->m_fftOutputBuffer[threadId], &message->m_header);
     }
 
     this->ProcessWrite(doWrite, centerFrequency, sequenceId);

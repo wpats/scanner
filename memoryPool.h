@@ -7,6 +7,7 @@
 template <class HeaderT, typename T>
 class Buffer
 {
+ public:
   HeaderT m_header;
   T * m_data;
  public:

@@ -31,15 +31,15 @@ class ProcessSamples {
   };
     
  private:
-  bool process_fft(fftwf_complex * fft_data, 
-                   uint32_t center_frequency);
+  bool process_fft(fftwf_complex * fft_data, SampleQueue::MessageHeader * header);
   void WriteToFile(const char * fileName, fftwf_complex * data);
   void WriteSamplesToFile(uint32_t count, double centerFrequency);
   void WriteSamplesToFile(uint64_t sequenceId, double centerFrequency);
+  void TimeToString(time_t time, char * buffer, uint32_t length);
   std::string GenerateFileName(std::string fileNameBase, 
                                time_t startTime, 
                                double_t centerFrequency);
-  bool DoTimeDomainThresholding(fftwf_complex * inputSamples, double centerFrequency);
+  bool DoTimeDomainThresholding(fftwf_complex * inputSamples, SampleQueue::MessageHeader * header);
   void UpdateEndSequenceId(uint64_t newEndSequenceId);
   void ProcessWrite(bool doWrite, 
                     double centerFrequency,

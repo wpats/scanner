@@ -24,11 +24,13 @@ class MessageQueue
     uint32_t m_referenceCount;
     double m_frequency;
     uint64_t m_sequenceId;
+    time_t m_time;
   };
   typedef MemoryPool<MessageHeader, T> Allocator;
   typedef typename Allocator::BufferType MessageType;
   enum SampleKind {
     Illegal = 0,
+    ByteComplex,
     Short,
     ShortComplex,
     FloatComplex
@@ -49,6 +51,7 @@ class MessageQueue
   uint64_t m_writeStartSequenceId;
   uint64_t m_writeEndSequenceId;
   bool m_doWrite;
+  uint32_t m_iterationCount;
 
   // Not related to writing.
   fftwf_complex * m_floatComplex;
@@ -58,11 +61,19 @@ class MessageQueue
   bool m_correctDCOffset;
   bool m_done;
   uint32_t enob;
-  void SynchronizedAppend(T * data, double centerFrequency) {
+  void SynchronizedAppend(T * data, double centerFrequency, time_t time)
+  {
+    if (time) {
+      this->m_iterationCount++;
+    }
+    if (this->m_iterationCount < 2) {
+      return;
+    }
     MessageType * message = this->m_memoryPool.Allocate();
     memset(message->GetData(), 0, sizeof(T) * this->m_sampleCount);
     memcpy(message->GetData(), data, sizeof(T) * this->m_sampleCount);
     MessageHeader & header = message->GetHeader();
+    header.m_time = time;
     header.m_frequency = centerFrequency;
     header.m_kind = MessageHeader::ProcessData;
     std::unique_lock<std::mutex> locker(this->m_mutex);
@@ -143,6 +154,7 @@ class MessageQueue
       m_writeStartSequenceId(0),
       m_writeEndSequenceId(0),
       m_doWrite(doWrite),
+      m_iterationCount(0),
       m_writeFile(nullptr)
   {
     assert(kind > Illegal && kind <= FloatComplex);
@@ -174,7 +186,8 @@ class MessageQueue
 
   void AppendSamples(int16_t * realSamples, 
                      int16_t * imagSamples, 
-                     double centerFrequency)
+                     double centerFrequency,
+                     time_t time)
   {
     assert(this->m_kind == Short);
     Utility::short_complex_to_float_complex(realSamples, 
@@ -183,11 +196,12 @@ class MessageQueue
                                             this->m_sampleCount,
                                             this->m_enob,
                                             this->m_correctDCOffset);
-    this->SynchronizedAppend(this->m_floatComplex, centerFrequency);
+    this->SynchronizedAppend(this->m_floatComplex, centerFrequency, time);
   }
 
   void AppendSamples(int16_t shortComplexSamples[][2],
-                     double centerFrequency)
+                     double centerFrequency,
+                     time_t time)
   {
     assert(this->m_kind == ShortComplex);
     Utility::short_complex_to_float_complex(shortComplexSamples,
@@ -195,14 +209,28 @@ class MessageQueue
                                             this->m_sampleCount,
                                             this->m_enob,
                                             this->m_correctDCOffset);
-    this->SynchronizedAppend(this->m_floatComplex, centerFrequency);
+    this->SynchronizedAppend(this->m_floatComplex, centerFrequency, time);
+  }
+
+  void AppendSamples(int8_t byteComplexSamples[][2],
+                     double centerFrequency,
+                     time_t time)
+  {
+    assert(this->m_kind == ByteComplex);
+    Utility::byte_complex_to_float_complex(byteComplexSamples,
+                                           this->m_floatComplex,
+                                           this->m_sampleCount,
+                                           this->m_enob,
+                                           this->m_correctDCOffset);
+    this->SynchronizedAppend(this->m_floatComplex, centerFrequency, time);
   }
 
   void AppendSamples(fftwf_complex * floatComplexSamples,
-                     double centerFrequency)
+                     double centerFrequency,
+                     time_t time)
   {
     assert(this->m_kind == FloatComplex);   
-    this->SynchronizedAppend(floatComplexSamples, centerFrequency);
+    this->SynchronizedAppend(floatComplexSamples, centerFrequency, time);
   }
 
   MessageType * GetNextSamples()

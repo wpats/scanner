@@ -14,22 +14,16 @@ SignalSource::SignalSource(uint32_t sampleRate,
     m_sampleCount(sampleCount),
     m_startFrequency(startFrequency),
     m_stopFrequency(stopFrequency),
-    m_frequencyIndex(0),
-    m_iterationCount(0),
+    m_iterationLimit(0),
     m_thread(nullptr),
     m_finished(false),
+    m_frequencyTable(sampleRate, startFrequency, stopFrequency),
     m_doTiming(doTiming),
     m_retuneTimeIndex(0),
     m_getSamplesTimeIndex(0),
     m_retuneTime(s_maxIndex),
     m_getSamplesTime(s_maxIndex)
 {
-  uint32_t numFrequencies = ceil((stopFrequency - startFrequency)/sampleRate);
-  this->m_frequencies.resize(numFrequencies);
-  for (uint32_t i = 0; i < numFrequencies; i++) {
-    this->m_frequencies[i] = startFrequency + i * double(sampleRate) + double(sampleRate)/2;
-    fprintf(stderr, "Frequency %d: %.0f\n", i, this->m_frequencies[i]);
-  }
 }
 
 SignalSource::~SignalSource() 
@@ -40,39 +34,38 @@ bool SignalSource::Start() {}
 
 bool SignalSource::Stop() {}
 
-double SignalSource::GetNextFrequency()
+double SignalSource::GetNextFrequency(void ** pinfo)
 {
-  uint32_t index = this->m_frequencyIndex;
-  this->m_frequencyIndex = (index + 1) % this->m_frequencies.size();
-  if (this->m_frequencyIndex == 0) {
-    if (this->m_iterationCount > 0) {
-      this->m_iterationCount--;
-    }
-  }
-  return this->GetCurrentFrequency();
+  return this->m_frequencyTable.GetNextFrequency(pinfo);
 }
 
-double SignalSource::GetCurrentFrequency()
+double SignalSource::GetCurrentFrequency(void ** pinfo)
 {
-  uint32_t index = this->m_frequencyIndex;
-  return this->m_frequencies[index];
+  return this->m_frequencyTable.GetCurrentFrequency(pinfo);
 }
 
 uint32_t SignalSource::GetFrequencyCount()
 {
-  return this->m_frequencies.size();
+  return this->m_frequencyTable.GetFrequencyCount();
+}
+
+bool SignalSource::GetIsScanStart()
+{
+  return this->m_frequencyTable.GetIsScanStart();
 }
 
 uint32_t SignalSource::GetIterationCount()
 {
-  return this->m_iterationCount;
+  return this->m_frequencyTable.GetIterationCount();
 }
 
-bool SignalSource::StartThread()
+bool SignalSource::StartThread(uint32_t numIterations, SampleQueue & sampleQueue)
 {
   // NOTE: d_finished should be something explicitely thread safe. But since
   // nothing breaks on concurrent access, I'll just leave it as bool.
   printf("Starting source thread...\n");
+  this->m_iterationLimit = numIterations;
+  this->m_sampleQueue = &sampleQueue;
   this->m_finished = false;
   this->m_thread = std::unique_ptr<std::thread>(new std::thread(&SignalSource::ThreadWorkerHelper, 
                                                                 this));
@@ -88,6 +81,19 @@ bool SignalSource::StopThread()
     this->m_thread->join();
   }
   return true;
+}
+
+bool SignalSource::GetIsDone()
+{
+  if (this->GetIterationCount() >= this->m_iterationLimit || this->m_isDone) {
+    return true;
+  }
+  return false;
+}
+
+void SignalSource::SetIsDone()
+{
+  this->m_isDone = true;
 }
 
 void SignalSource::ThreadWorkerHelper()

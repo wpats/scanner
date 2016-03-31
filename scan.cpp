@@ -1,3 +1,5 @@
+#include <signal.h>
+#include <unistd.h>
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -16,18 +18,39 @@
 #endif
 #include "airspySource.h"
 #include "sdrplaySource.h"
+#include "hackRFSource.h"
 #include "scan.h"
 
 
+struct Context
+{
+  SignalSource * m_signalSource;
+  ProcessSamples * m_process;
+  SampleQueue * m_sampleQueue;
+  struct timespec m_start, m_stop;
+} globalContext;
 
-/* Usage:
- * libbladeRF_example_boilerplate [serial #]
- *
- * If a serial number is supplied, the program will attempt to open the
- * device with the provided serial number.
- *
- * Otherwise, the first available device will be used.
- */
+void TerminationHandler(int s)
+{
+  // printf("Caught signal %d\n",s);
+  if (globalContext.m_signalSource != nullptr) {
+    globalContext.m_signalSource->SetIsDone();
+    globalContext.m_signalSource->StopStreaming();
+    globalContext.m_signalSource->Stop();
+    fflush(stdout);
+
+    // Calculate and report time.
+    clock_gettime(CLOCK_REALTIME, &globalContext.m_stop);
+    double startd = globalContext.m_start.tv_sec*1000.0 + globalContext.m_start.tv_nsec/1e6;
+    double stopd = globalContext.m_stop.tv_sec*1000.0 + globalContext.m_stop.tv_nsec/1e6;
+    double elapsed = stopd - startd;
+    fprintf(stderr, "Elapsed time = %f ms\n", elapsed);
+
+    delete globalContext.m_signalSource;
+  }
+  exit(1); 
+}
+
 int main(int argc, char *argv[])
 {
   int status;
@@ -142,6 +165,18 @@ int main(int argc, char *argv[])
       bandWidth);
     correctDCOffset = false;
     sampleKind = SampleQueue::Short;
+  } else if (args.find("hackrf") != std::string::npos) {
+    source = new HackRFSource(args, 
+      sample_rate, 
+      sampleCount, 
+      startFrequency, 
+      stopFrequency);
+    enob = 8;
+    correctDCOffset = false;
+    sampleKind = SampleQueue::ByteComplex;
+    if (dcIgnoreWindow == 0) {
+      dcIgnoreWindow = 25;
+    }
   } else {
     std::cout << "Missing source type argument" << std::endl;
     std::cout << desc << "\n";
@@ -165,61 +200,22 @@ int main(int argc, char *argv[])
                          preTrigger,
                          postTrigger);
   SampleQueue sampleQueue(sampleKind, enob, sampleCount, 1024, correctDCOffset, outFileName != "");
+
+  // Save context and setup termination handler.
+  globalContext = Context{source, &process, &sampleQueue};
+
+  struct sigaction sigIntHandler;
+  sigIntHandler.sa_handler = TerminationHandler;
+  sigemptyset(&sigIntHandler.sa_mask);
+  sigIntHandler.sa_flags = 0;
+  sigaction(SIGINT, &sigIntHandler, NULL);
+
+  // Run the system.
   source->Start();
-
-  struct timespec start, stop;
-  clock_gettime(CLOCK_REALTIME, &start);
-  double startIter = start.tv_sec*1000.0 + start.tv_nsec/1e6;
-
+  clock_gettime(CLOCK_REALTIME, &globalContext.m_start);
   source->StartStreaming(num_iterations, sampleQueue);
   process.StartProcessing(sampleQueue);
-  source->StopStreaming();
-
-#if 0
-  double previousFrequency = startFrequency;
-  uint32_t frequencyCount = source->GetFrequencyCount();
-  for (uint32_t i = 0; i < num_iterations;) {
-    double centerFrequency;
-    if (!source->GetNextSamples(sample_buffer, centerFrequency)) {
-      fprintf(stderr, "Receive samples failed, exiting...\n");
-      break;
-    }
-    source->WriteTimingData();
-    // Process samples
-    process.Run(sample_buffer, centerFrequency);
-
-    // Detect complete scan.
-    if (--frequencyCount == 0) {
-      frequencyCount = source->GetFrequencyCount();
-      i++;
-
-#if 1
-      // Calculate and report time.
-      if (i % 1 == 0) {
-        struct timespec iterStop;
-        clock_gettime(CLOCK_REALTIME, &iterStop);
-        double stopd = iterStop.tv_sec*1000.0 + iterStop.tv_nsec/1e6;
-        double elapsed = stopd - startIter;
-        fprintf(stderr, "Iteration time = %f ms\n", elapsed/1.0);
-        startIter = stopd;
-      }
-#endif
-    }
-    previousFrequency = centerFrequency;
-  }
-#else
-  // process.RecordSamples(source, sampleCount * num_iterations, 0.0);
-#endif
-
-  source->Stop();
-  // Calculate and report time.
-  clock_gettime(CLOCK_REALTIME, &stop);
-  double startd = start.tv_sec*1000.0 + start.tv_nsec/1e6;
-  double stopd = stop.tv_sec*1000.0 + stop.tv_nsec/1e6;
-  double elapsed = stopd - startd;
-  fprintf(stderr, "Elapsed time = %f ms\n", elapsed);
-
-  delete source;
+  TerminationHandler(0);
   return 0;
 }
 
