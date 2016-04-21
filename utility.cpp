@@ -41,14 +41,10 @@ void Utility::byte_complex_to_float_complex(int8_t source[][2],
   float onebymax = float(1.0/max);
   int32_t dc_real = 0;
   int32_t dc_imag = 0;
-  int8_t max_r = -1;
-  int8_t max_i = -1;
   if (correctDCOffset) {
     for (uint32_t i = 0; i < sampleCount; i++) {
       dc_real += source[i][0];
       dc_imag += source[i][1];
-      max_r = std::max<int8_t>(max_r, source[i][0]);
-      max_i = std::max<int8_t>(max_i, source[i][1]);
     }
     dc_real /= sampleCount;
     dc_imag /= sampleCount;

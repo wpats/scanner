@@ -199,12 +199,16 @@ bool ProcessSamples::DoTimeDomainThresholding(fftwf_complex * inputSamples,
   float maxMagnitude = std::numeric_limits<float>::min();
   float minMagnitude = std::numeric_limits<float>::max();
   bool allZeros = true;
+  float maxre = std::numeric_limits<float>::min();
+  float maxim = std::numeric_limits<float>::min();
   for (uint32_t i = 0; i < this->m_sampleCount; i++) {
     float re = inputSamples[i][0];
     float im = inputSamples[i][1];
     if (re != 0.0 || im != 0.0) {
       allZeros = false;
     }
+    maxre = std::max(maxre, re);
+    maxim = std::max(maxim, im);
     float mag = sqrt(re * re + im * im); // / this->m_sampleCount;
     float magnitude = 10 * log2(mag) / log10;
     maxMagnitude = std::max(maxMagnitude, magnitude);
@@ -218,6 +222,7 @@ bool ProcessSamples::DoTimeDomainThresholding(fftwf_complex * inputSamples,
            this->m_threshold,
            header->m_frequency,
            minMagnitude);
+    printf("Max re[%f], im[%f]\n", maxre, maxim);
     return true;
   }
   return false;

@@ -34,7 +34,6 @@ void TerminationHandler(int s)
 {
   // printf("Caught signal %d\n",s);
   if (globalContext.m_signalSource != nullptr) {
-    globalContext.m_signalSource->SetIsDone();
     globalContext.m_signalSource->StopStreaming();
     globalContext.m_signalSource->Stop();
     fflush(stdout);
@@ -45,6 +44,7 @@ void TerminationHandler(int s)
     double stopd = globalContext.m_stop.tv_sec*1000.0 + globalContext.m_stop.tv_nsec/1e6;
     double elapsed = stopd - startd;
     fprintf(stderr, "Elapsed time = %f ms\n", elapsed);
+    fflush(stderr);
 
     delete globalContext.m_signalSource;
   }
@@ -172,7 +172,7 @@ int main(int argc, char *argv[])
       startFrequency, 
       stopFrequency);
     enob = 8;
-    correctDCOffset = false;
+    correctDCOffset = true;
     sampleKind = SampleQueue::ByteComplex;
     if (dcIgnoreWindow == 0) {
       dcIgnoreWindow = 25;

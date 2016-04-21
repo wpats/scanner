@@ -29,6 +29,7 @@ class SignalSource
   FrequencyTable m_frequencyTable;
   uint32_t m_iterationLimit;
   SampleQueue * m_sampleQueue;
+  void SetIsDone();
   bool StopThread();
   bool StartThread(uint32_t numIterations, SampleQueue & sampleQueue);
   void ThreadWorkerHelper();
@@ -53,7 +54,6 @@ class SignalSource
   uint32_t GetFrequencyCount();
   bool GetIsScanStart();
   void StopStreaming();
-  void SetIsDone();
   void StartTimer();
   void StopTimer();
   void AddRetuneTime();

@@ -7,8 +7,11 @@ class HackRFSource : public SignalSource
   enum StreamingState {
     Illegal = 0,
     Streaming,
+    DoRetune,
     Done
   } m_streamingState;
+  std::mutex m_mutex;
+  std::condition_variable m_stateChange;
   struct hackrf_device * m_dev;
   bool m_done_streaming;
   bool m_didRetune;

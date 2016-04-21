@@ -105,6 +105,7 @@ void SignalSource::ThreadWorkerHelper()
 
 void SignalSource::StopStreaming()
 {
+  this->SetIsDone();
   this->StopThread();
 }
 
