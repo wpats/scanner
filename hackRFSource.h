@@ -9,9 +9,11 @@ class HackRFSource : public SignalSource
     Streaming,
     DoRetune,
     Done
-  } m_streamingState;
-  std::mutex m_mutex;
-  std::condition_variable m_stateChange;
+  };
+  std::atomic<StreamingState> m_streamingState;
+  struct timeval m_nextValidStreamTime;
+  double m_retuneTime;
+  uint32_t m_dropPacketCount;
   struct hackrf_device * m_dev;
   bool m_done_streaming;
   bool m_didRetune;

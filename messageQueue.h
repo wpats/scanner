@@ -212,7 +212,7 @@ class MessageQueue
     this->SynchronizedAppend(this->m_floatComplex, centerFrequency, time);
   }
 
-  void AppendSamples(int8_t byteComplexSamples[][2],
+  void AppendSamples(int8_t (*byteComplexSamples)[2],
                      double centerFrequency,
                      time_t time)
   {

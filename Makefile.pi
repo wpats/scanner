@@ -1,0 +1,21 @@
+
+OBJS := scan.o fft.o process.o signalSource.o sampleBuffer.o \
+	processInterface.o utility.o frequencyTable.o \
+	bladerfSource.o airspySource.o sdrplaySource.o hackRFSource.o
+
+HEADERS := scan.h signalSource.h process.h fft.h messageQueue.h \
+	bladerfSource.h airspySource.h hackRFSource.h
+
+LIBS = -lfftw3f -lboost_program_options -lboost_system -lgnuradio-fft -lvolk -lpthread
+HARDWARE_LIBS = -lbladeRF -lairspy -lmirsdrapi-rsp -lhackrf
+
+scan: $(OBJS) Makefile.pi
+	g++ -g -o scan $(OBJS) -L ../target/lib $(HARDWARE_LIBS) -L /usr/lib/arm-linux-gnueabihf $(LIBS)
+
+clean:
+	rm *.o
+
+sampleBuffer.o: sampleBuffer.cpp buffer.cpp sampleBuffer.h
+
+%.o: %.cpp $(HEADERS) Makefile.pi
+	g++ -g -o $@ -c -I ../target/include -std=gnu++11 $<
