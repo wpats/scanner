@@ -12,12 +12,13 @@ FrequencyTable::FrequencyTable(uint32_t sampleRate,
   : m_frequencyIndex(0),
     m_iterationCount(0)
 {
-  double f1 = startFrequency + 0.45 * sampleRate;
+  double f1 = startFrequency + 0.375 * sampleRate;
+  double step = 0.375 - 0.025;
   double frequency;
   uint32_t count = 0;
-  for (; (frequency = f1 + count * 0.40 * double(sampleRate)) < stopFrequency; count++) {
+  for (; (frequency = f1 + count * step * double(sampleRate)) < stopFrequency; count++) {
   }
-  assert(count == ceil((stopFrequency - (startFrequency + 0.45 * sampleRate))/(0.4 * sampleRate)));
+  assert(count == ceil((stopFrequency - f1)/(step * sampleRate)));
   this->m_table.resize(count);
   for (uint32_t i = 0; i < count; i++) {
     double frequency = f1 + i * 0.40 * double(sampleRate);

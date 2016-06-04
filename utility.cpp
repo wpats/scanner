@@ -87,6 +87,7 @@ void Utility::complex_to_magnitude(fftwf_complex * fft_data,
                                    float * magnitudes,
                                    uint32_t sampleCount)
 {
+  // TODO: Use volk kernel here. volk_32fc_s32f_power_spectrum_32f_a; ?
   double log10 = log2(10);
   for (uint32_t i = 0; i < sampleCount; i++) {
     float re = fft_data[i][0];

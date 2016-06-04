@@ -6,7 +6,8 @@ OBJS := scan.o fft.o process.o signalSource.o sampleBuffer.o \
 HEADERS := scan.h signalSource.h process.h fft.h messageQueue.h \
 	bladerfSource.h b210Source.h airspySource.h hackRFSource.h
 
-LIBS = -lfftw3f -lboost_program_options -lboost_system -lgnuradio-fft -lvolk
+LIBS = -lfftw3f -lboost_program_options -lboost_system -lgnuradio-fft\
+	 -lgnuradio-filter -lvolk
 HARDWARE_LIBS = -lbladeRF -luhd -lairspy -lmirsdrapi-rsp -lhackrf
 
 scan: $(OBJS) Makefile

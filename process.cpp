@@ -43,10 +43,10 @@ bool ProcessSamples::process_fft(fftwf_complex * fft_data, SampleQueue::MessageH
   bool trigger = false;
   for (uint32_t i = 0; i < this->m_sampleCount; i++) {
     uint32_t j = (i + this->m_sampleCount/2) % this->m_sampleCount;
-    if (j < this->m_dcIgnoreWindow || (this->m_sampleCount - j < this->m_dcIgnoreWindow)) {
+    if (j < this->m_dcIgnoreWindow || (this->m_sampleCount - j) < this->m_dcIgnoreWindow) {
       continue;
     }
-    if (i < uint32_t(0.05 * this->m_sampleCount) || i > uint32_t(0.95 * this->m_sampleCount)) {
+    if (i < uint32_t(0.125 * this->m_sampleCount) || i > uint32_t(0.875 * this->m_sampleCount)) {
       continue;
     }
     if (magnitudes[j] > this->m_threshold) {

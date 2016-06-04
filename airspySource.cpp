@@ -38,7 +38,8 @@ AirspySource::AirspySource(std::string args,
     m_dev(nullptr),
     m_streamingState(Illegal),
     m_bufferIndex(0),
-    m_didRetune(false)
+    m_retuneTime(0.005),
+    m_dropPacketCount(ceil(sampleRate * m_retuneTime / 65536))
 {
   this->m_buffer = new fftwf_complex[sampleCount];
   int status;
@@ -178,50 +179,25 @@ int AirspySource::_airspy_rx_callback(airspy_transfer* transfer)
 int AirspySource::airspy_rx_callback(void * samples, int sample_count)
 {
   time_t startTime;
+
   if (!this->GetIsDone()) { 
+    if (this->m_dropPacketCount-- > 0) {
+      return 0;
+    }
     double centerFrequency = this->GetCurrentFrequency();
     bool isScanStart = this->GetIsScanStart();
-    uint32_t startIndex = this->m_bufferIndex;
-    uint32_t count = sample_count;
-    if (this->m_didRetune) {
-      // Re-tune time is 5ms. So need to discard 5ms worth of samples.
-      uint32_t discardCount = this->m_sampleRate/200;
-      this->m_didRetune = false;
-      startIndex += discardCount;
-      count -= discardCount;
-      startTime = time(NULL);
+    startTime = time(NULL);
+
+    double nextFrequency = this->GetNextFrequency();
+    if (this->GetFrequencyCount() > 1) {
+      this->Retune(nextFrequency);
+      this->m_dropPacketCount = ceil(this->m_sampleRate * m_retuneTime / 65536);
     }
-    count = std::min<uint32_t>(count, this->m_sampleCount - this->m_bufferIndex);
-    if (count < this->m_sampleCount) {
-      if (this->m_bufferIndex < this->m_sampleCount) {
-        memcpy(this->m_buffer + startIndex,
-               samples, 
-               sizeof(fftwf_complex) * count);
-        this->m_bufferIndex += count;
-      }
-      if (this->m_bufferIndex == this->m_sampleCount) {
-        double nextFrequency = this->GetNextFrequency();
-        if (this->GetFrequencyCount() > 1) {
-          this->Retune(nextFrequency);
-          this->m_didRetune = true;
-        }
-        this->m_sampleQueue->AppendSamples(this->m_buffer, 
-                                           centerFrequency,
-                                           (isScanStart ? startTime : 0));
-        this->m_bufferIndex = 0;
-      }
-    } else {
-      // count >= this->m_sampleCount
-      double nextFrequency = this->GetNextFrequency();
-      if (this->GetFrequencyCount() > 1) {
-        this->Retune(nextFrequency);
-        this->m_didRetune = true;
-      }
-      for (uint32_t i = 0; i < count/this->m_sampleCount; i++) {
-        this->m_sampleQueue->AppendSamples(reinterpret_cast<fftwf_complex *>(samples) + startIndex + i * this->m_sampleCount, 
-                                           centerFrequency,
-                                           (isScanStart ? startTime : 0));
-      }
+    for (uint32_t i = 0; i < sample_count/this->m_sampleCount; i++) {
+      this->m_sampleQueue->AppendSamples(reinterpret_cast<fftwf_complex *>(samples) + i * this->m_sampleCount, 
+                                         centerFrequency,
+                                         (isScanStart ? startTime : 0));
+      isScanStart = false;
     }
   } else {
     this->m_streamingState = Done;

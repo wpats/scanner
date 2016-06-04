@@ -55,7 +55,7 @@ class ProcessSamples {
   uint32_t m_postTrigger;
   std::atomic<uint64_t> m_endSequenceId;
   bool m_correctDCOffset;
-  bool m_dcIgnoreWindow;
+  uint32_t m_dcIgnoreWindow;
   bool m_writeSamples;
   std::atomic<bool> m_writing;
   Mode m_mode;

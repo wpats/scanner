@@ -143,7 +143,7 @@ BladerfSource::BladerfSource(std::string args,
   config.bandwidth = sampleRate;
   config.samplerate = sampleRate;
   config.rx_lna = BLADERF_LNA_GAIN_MAX;
-  config.vga1 = 30;
+  config.vga1 = 12;
   config.vga2 = 3;
   status = configure_module(this->m_dev, &config);
   HANDLE_ERROR("Failed to configure RX module. Exiting.\n");
@@ -258,8 +258,6 @@ void BladerfSource::ThreadWorker()
     metadata2.flags = BLADERF_META_FLAG_RX_NOW;
 
     // TODO: How to convert metadata.timestamp to time_t
-    time_t startTime;
-    startTime = time(NULL);
     bool isScanStart = this->GetIsScanStart();
 
     // sleep(0.010);
@@ -278,6 +276,8 @@ void BladerfSource::ThreadWorker()
         break;
       }
     }
+
+    time_t startTime = time(NULL);
     double nextFrequency = this->GetNextFrequency();
     if (this->GetFrequencyCount() > 1) {
       this->Retune(nextFrequency);

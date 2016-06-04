@@ -14,6 +14,7 @@ class HackRFSource : public SignalSource
   struct timeval m_nextValidStreamTime;
   double m_retuneTime;
   uint32_t m_dropPacketCount;
+  uint32_t m_scanStartCount;
   struct hackrf_device * m_dev;
   bool m_done_streaming;
   bool m_didRetune;

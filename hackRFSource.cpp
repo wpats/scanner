@@ -38,8 +38,9 @@ HackRFSource::HackRFSource(std::string args,
     m_dev(nullptr),
     m_streamingState(Illegal),
     m_nextValidStreamTime{0, 0},
-    m_retuneTime(0.200),
+    m_retuneTime(0.0100),
     m_dropPacketCount(ceil(sampleRate * m_retuneTime / 131072)),
+    m_scanStartCount(101),
     m_bufferIndex(0),
     m_didRetune(false)
 {
@@ -63,19 +64,25 @@ HackRFSource::HackRFSource(std::string args,
 
   this->set_sample_rate(sampleRate);
 
+  uint32_t bandWidth = hackrf_compute_baseband_filter_bw(uint32_t(0.75 * sampleRate));
+  status = hackrf_set_baseband_filter_bandwidth( this->m_dev, bandWidth );
+  HANDLE_ERROR("hackrf_set_baseband_filter_bandwidth %u: %%s", bandWidth );
+
   /* range 0-40 step 8d, IF gain in osmosdr  */
-  hackrf_set_lna_gain(this->m_dev, 8);
+  hackrf_set_lna_gain(this->m_dev, 0);
 
   /* range 0-62 step 2db, BB gain in osmosdr */
-  hackrf_set_vga_gain(this->m_dev, 20);
+  hackrf_set_vga_gain(this->m_dev, 6);
 
-  /* Parameter value shall be 0=Disable BiasT or 1=Enable BiasT */
-  /* antenna port power control */
+  /* Disable AMP gain stage by default. */
   hackrf_set_amp_enable(this->m_dev, 0);
 
+  status = hackrf_set_antenna_enable(this->m_dev, 0);
+
   if (args.find("bias")) {
-    status = hackrf_set_amp_enable(this->m_dev, 1);
-    HANDLE_ERROR("Failed to enable DC bias: %%s\n");
+    /* antenna port power control */
+    status = hackrf_set_antenna_enable(this->m_dev, 1);
+    HANDLE_ERROR("Failed to enable antenna DC bias: %%s\n");
   }
 
   double centerFrequency = this->GetCurrentFrequency();
@@ -142,58 +149,39 @@ int HackRFSource::_hackRF_rx_callback(hackrf_transfer* transfer)
 
 int HackRFSource::hackRF_rx_callback(hackrf_transfer* transfer)
 {
-  time_t startTime;
-  struct timeval currentTime;
-
   if (this->m_streamingState != Streaming) {
     return 0;
   }
   // printf("hackRF_rx_callback valid_length:%d\n", transfer->valid_length);
   if (!this->GetIsDone()) { 
+    uint32_t previousDropPacketCount = this->m_dropPacketCount;
+    uint32_t previousScanStartCount = this->m_scanStartCount;
+    if (previousDropPacketCount > 0) this->m_dropPacketCount--;
+    if (previousScanStartCount > 0) this->m_scanStartCount--;
+    bool isScanStart = this->GetIsScanStart();
 #if 0
-    if (gettimeofday(&currentTime, nullptr) == 0) {
-      printf("current[%d, %d] -> nextValid[%d, %d]\n",
-             currentTime.tv_sec,
-             currentTime.tv_usec,
-             this->m_nextValidStreamTime.tv_sec,
-             this->m_nextValidStreamTime.tv_usec);
-      if (timercmp(&currentTime, &this->m_nextValidStreamTime, <)) {
+    printf("isScanStart[%u] scanStartCount[%u] dropPacketCount[%u]\n", 
+           isScanStart, 
+           previousScanStartCount,
+           previousDropPacketCount);
+#endif
+    if (isScanStart) {
+      if (previousScanStartCount > 0) {
         return 0;
       }
-      startTime = time(NULL);
-    } else {
-      // TODO: Handle error.
-    }
-#endif
-
-    printf("hackRF_rx_callback dropPacketCount[%u], count[%d]\n", 
-           this->m_dropPacketCount,
-           transfer->valid_length/2);
-    if (this->m_dropPacketCount-- > 0) {
+    } 
+    if (previousDropPacketCount > 0) {
       return 0;
     }
+    this->m_scanStartCount = 42;
 
     double centerFrequency = this->GetCurrentFrequency();
-    bool isScanStart = this->GetIsScanStart();
     uint32_t startIndex = this->m_bufferIndex;
     uint32_t count = transfer->valid_length/2;
     uint32_t discardCount = 0;
     bool doRetune = false;
-
-#if 0
-    if (false && this->m_didRetune) {
-      // Re-tune time is 5ms. So need to discard 5ms worth of samples.
-      discardCount = this->m_sampleRate/200;
-      this->m_didRetune = false;
-      startIndex += discardCount;
-      count -= discardCount;
-      startTime = time(NULL);
-    } else {
-      count = std::min<uint32_t>(count, this->m_sampleCount - startIndex);
-    }
-#endif
+    time_t startTime = time(NULL);
     
-    //printf("hackRF_rx_callback count:%d\n", count);
     if (count < this->m_sampleCount) {
       if (this->m_bufferIndex < this->m_sampleCount) {
         memcpy(this->m_buffer + startIndex,
@@ -216,10 +204,11 @@ int HackRFSource::hackRF_rx_callback(hackrf_transfer* transfer)
         doRetune = true;
       }
       for (uint32_t i = 0; i < count; i+= this->m_sampleCount) {
-        printf("hackRF_rx_callback appending[%d]\n", i);
+        // printf("hackRF_rx_callback appending[%d]\n", i);
         this->m_sampleQueue->AppendSamples(reinterpret_cast<int8_t (*)[2]>(&transfer->buffer[2*i]),
                                            centerFrequency,
                                            (isScanStart ? startTime : 0));
+        isScanStart = false;
       }
     }
     if (doRetune) {
