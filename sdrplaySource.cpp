@@ -52,7 +52,7 @@ SdrplaySource::SdrplaySource(std::string args,
                              double startFrequency, 
                              double stopFrequency,
                              uint32_t bandWidth)
-  : SignalSource(sampleRate, sampleCount, startFrequency, stopFrequency),
+  : SignalSource(sampleRate, sampleCount, startFrequency, stopFrequency, 0.75, 0.05),
     m_samplesPerPacket(0),
     m_firstSampleNum(0),
     m_sample_buffer_i(nullptr),

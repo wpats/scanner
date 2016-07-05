@@ -14,7 +14,9 @@ class FrequencyTable
  public:
   FrequencyTable(uint32_t m_sampleRate,
                  double m_startFrequency,
-                 double m_stopFrequency);
+                 double m_stopFrequency,
+                 double useBandWidth,
+                 double dcIgnoreWidth);
   double GetNextFrequency(void ** pinfo = nullptr);
   double GetCurrentFrequency(void ** pinfo = nullptr);
   uint32_t GetFrequencyCount();

@@ -8,12 +8,17 @@
 
 FrequencyTable::FrequencyTable(uint32_t sampleRate,
                                double startFrequency,
-                               double stopFrequency)
+                               double stopFrequency,
+                               double useBandWidth,
+                               double dcIgnoreWidth)
   : m_frequencyIndex(0),
     m_iterationCount(0)
 {
-  double f1 = startFrequency + 0.375 * sampleRate;
-  double step = 0.375 - 0.025;
+  double f1 = startFrequency + useBandWidth/2 * sampleRate;
+  double step = useBandWidth; 
+  if (dcIgnoreWidth > 0) {
+    step = (useBandWidth - dcIgnoreWidth)/2;
+  }
   double frequency;
   uint32_t count = 0;
   for (; (frequency = f1 + count * step * double(sampleRate)) < stopFrequency; count++) {
@@ -21,7 +26,7 @@ FrequencyTable::FrequencyTable(uint32_t sampleRate,
   assert(count == ceil((stopFrequency - f1)/(step * sampleRate)));
   this->m_table.resize(count);
   for (uint32_t i = 0; i < count; i++) {
-    double frequency = f1 + i * 0.40 * double(sampleRate);
+    double frequency = f1 + i * step * double(sampleRate);
     // double frequency = startFrequency + i * double(sampleRate) + double(sampleRate)/2;
     printf("Frequency %d: %.0f\n", i, frequency);
     this->m_table.at(i) = FrequencyInfo{frequency, nullptr};

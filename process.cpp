@@ -41,12 +41,13 @@ bool ProcessSamples::process_fft(fftwf_complex * fft_data, SampleQueue::MessageH
 
   Utility::complex_to_magnitude(fft_data, magnitudes, this->m_sampleCount);
   bool trigger = false;
+  uint32_t halfSampleCount = this->m_sampleCount/2;
   for (uint32_t i = 0; i < this->m_sampleCount; i++) {
-    uint32_t j = (i + this->m_sampleCount/2) % this->m_sampleCount;
-    if (j < this->m_dcIgnoreWindow || (this->m_sampleCount - j) < this->m_dcIgnoreWindow) {
+    uint32_t j = (i + halfSampleCount) % this->m_sampleCount;
+    if (i < this->m_dcIgnoreWindow || (this->m_sampleCount - i) < this->m_dcIgnoreWindow) {
       continue;
     }
-    if (i < uint32_t(0.125 * this->m_sampleCount) || i > uint32_t(0.875 * this->m_sampleCount)) {
+    if (i > this->m_useWindow && i < (this->m_sampleCount - this->m_useWindow)) {
       continue;
     }
     if (magnitudes[j] > this->m_threshold) {
@@ -67,7 +68,8 @@ ProcessSamples::ProcessSamples(uint32_t numSamples,
                                Mode mode,
                                uint32_t threadCount,
                                std::string fileNameBase,
-                               uint32_t dcIgnoreWindow,
+                               double useBandWidth,
+                               double dcIgnoreWidth,
                                uint32_t preTrigger,
                                uint32_t postTrigger)
   : m_sampleCount(numSamples),
@@ -77,7 +79,8 @@ ProcessSamples::ProcessSamples(uint32_t numSamples,
     m_threshold(threshold),
     m_fftWindow(windowType, numSamples),
     m_correctDCOffset(false),
-    m_dcIgnoreWindow(dcIgnoreWindow),
+    m_useWindow(uint32_t(useBandWidth * numSamples / 2.0)),
+    m_dcIgnoreWindow(uint32_t(dcIgnoreWidth * numSamples / 2.0)),
     m_fft(numSamples),
     m_mode(mode),
     m_sampleQueue(nullptr),
@@ -275,6 +278,7 @@ void ProcessSamples::ThreadWorker(uint32_t threadId)
                          timeBuffer, 
                          std::extent<decltype(timeBuffer)>::value);
       printf("Start scan at %s\n", timeBuffer);
+      fflush(stdout);
     }
     sequenceId = message->GetHeader().m_sequenceId;
     double centerFrequency = message->GetHeader().m_frequency;
@@ -289,7 +293,9 @@ void ProcessSamples::ThreadWorker(uint32_t threadId)
                           this->m_inputSamples[threadId]);
       doWrite = this->process_fft(this->m_fftOutputBuffer[threadId], &message->m_header);
     }
-
+    if (doWrite) {
+      fflush(stdout);
+    }
     this->ProcessWrite(doWrite, centerFrequency, sequenceId);
     this->m_sampleQueue->MessageProcessed(message);
   }

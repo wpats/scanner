@@ -28,7 +28,9 @@ class BladerfSource : public SignalSource
                 uint32_t sampleRate, 
                 uint32_t sampleCount, 
                 double startFrequency, 
-                double stopFrequency);
+                double stopFrequency,
+                double useBandWidth,
+                double dcIgnoreWidth);
   virtual ~BladerfSource();
   virtual bool GetNextSamples(SampleQueue * sampleQueue, double_t & centerFrequency);
   virtual bool StartStreaming(uint32_t numIterations, SampleQueue & sampleQueue);

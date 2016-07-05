@@ -43,6 +43,8 @@ class SignalSource
                uint32_t m_sampleCount,
                double m_startFrequency,
                double m_stopFrequency,
+               double useBandWidth = 0.75,
+               double dcIgnoreWidth = 0.0,
                bool doTiming = false);
   virtual ~SignalSource();
   virtual bool Start();

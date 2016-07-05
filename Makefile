@@ -19,5 +19,5 @@ clean:
 sampleBuffer.o: sampleBuffer.cpp buffer.cpp sampleBuffer.h
 
 %.o: %.cpp $(HEADERS)  Makefile 
-	g++ -g -D INCLUDE_B210 -o $@ -c -I ../target/include -std=gnu++11 $<
+	g++ -g -O3 -D INCLUDE_B210 -o $@ -c -I ../target/include -std=gnu++11 $<
 

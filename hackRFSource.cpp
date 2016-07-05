@@ -34,7 +34,7 @@ HackRFSource::HackRFSource(std::string args,
                            uint32_t sampleCount, 
                            double startFrequency, 
                            double stopFrequency)
-  : SignalSource(sampleRate, sampleCount, startFrequency, stopFrequency),
+  : SignalSource(sampleRate, sampleCount, startFrequency, stopFrequency, 0.75, 0.0),
     m_dev(nullptr),
     m_streamingState(Illegal),
     m_nextValidStreamTime{0, 0},

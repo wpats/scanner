@@ -118,8 +118,15 @@ BladerfSource::BladerfSource(std::string args,
                              uint32_t sampleRate, 
                              uint32_t sampleCount, 
                              double startFrequency, 
-                             double stopFrequency)
-  : SignalSource(sampleRate, sampleCount, startFrequency, stopFrequency)
+                             double stopFrequency,
+                             double useBandWidth,
+                             double dcIgnoreWidth)
+  : SignalSource(sampleRate,
+                 sampleCount,
+                 startFrequency,
+                 stopFrequency,
+                 useBandWidth,
+                 dcIgnoreWidth)
 {
   int status;
   struct module_config config;
@@ -143,7 +150,7 @@ BladerfSource::BladerfSource(std::string args,
   config.bandwidth = sampleRate;
   config.samplerate = sampleRate;
   config.rx_lna = BLADERF_LNA_GAIN_MAX;
-  config.vga1 = 12;
+  config.vga1 = 15;
   config.vga2 = 3;
   status = configure_module(this->m_dev, &config);
   HANDLE_ERROR("Failed to configure RX module. Exiting.\n");

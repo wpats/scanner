@@ -176,7 +176,7 @@ void B210Source::ThreadWorker()
     stream_cmd.time_spec = uhd::time_spec_t(0.0);
     this->m_rx_stream->issue_stream_cmd(stream_cmd);
 
-    std::vector<void *> buffs(2);
+    std::vector<void *> buffs(1);
     // int16_t sample_buffer[this->m_sampleCount][2];
     fftwf_complex sample_buffer[this->m_sampleCount];
     // meta-data will be filled in by recv()

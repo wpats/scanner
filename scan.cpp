@@ -61,12 +61,13 @@ int main(int argc, char *argv[])
   float threshold;
   double startFrequency;
   double stopFrequency;
+  double useBandWidth = 0.75;
+  double dcIgnoreWidth = 0.0;
   std::string args;
   std::string spec;
   std::string outFileName;
   std::string modeString;
   uint32_t num_iterations;
-  uint32_t dcIgnoreWindow = 0;
   uint32_t sampleCount;
   uint32_t bandWidth;
   uint32_t preTrigger;
@@ -79,7 +80,7 @@ int main(int argc, char *argv[])
     ("args", po::value<std::string>(&args)->default_value(""), "device args")
     ("bandwidth,b", po::value<uint32_t>(&bandWidth)->default_value(8000000), "Band width")
     ("count,c", po::value<uint32_t>(&sampleCount)->default_value(8192), "sample count")
-    ("dcwindow,d", po::value<uint32_t>(&dcIgnoreWindow)->default_value(0), "ignore window around DC")
+    ("dcignorewidth,d", po::value<double>(&dcIgnoreWidth)->default_value(0.0), "ignore width window around DC")
     ("mode,m", po::value<std::string>(&modeString)->default_value("time"), "processing mode 'time' or 'frequency'")
     ("niterations,n", po::value<uint32_t>(&num_iterations)->default_value(10), "Number of iterations")
     ("outfile,o", po::value<std::string>(&outFileName)->default_value(""), "File name base to record samples")
@@ -130,11 +131,10 @@ int main(int argc, char *argv[])
                                sample_rate, 
                                sampleCount, 
                                startFrequency, 
-                               stopFrequency);
+                               stopFrequency,
+                               useBandWidth,
+                               dcIgnoreWidth);
     correctDCOffset = true;
-    if (dcIgnoreWindow == 0) {
-      dcIgnoreWindow = 25;
-    }
 #ifdef INCLUDE_B210
   } else if (args.find("b200") != std::string::npos) {
     source = new B210Source(args, 
@@ -153,9 +153,6 @@ int main(int argc, char *argv[])
       stopFrequency);
     sampleKind = SampleQueue::FloatComplex;
     correctDCOffset = false;
-    if (dcIgnoreWindow == 0) {
-      dcIgnoreWindow = 24;
-    }
   } else if (args.find("sdrplay") != std::string::npos) {
     source = new SdrplaySource(args, 
       sample_rate, 
@@ -174,9 +171,10 @@ int main(int argc, char *argv[])
     enob = 8;
     correctDCOffset = true;
     sampleKind = SampleQueue::ByteComplex;
-    if (dcIgnoreWindow == 0) {
-      dcIgnoreWindow = 25;
+    if (dcIgnoreWidth == 0.0) {
+      dcIgnoreWidth = 0.05;
     }
+    dcIgnoreWidth = 0.0;
   } else {
     std::cout << "Missing source type argument" << std::endl;
     std::cout << desc << "\n";
@@ -196,7 +194,8 @@ int main(int argc, char *argv[])
                          mode,
                          2,
                          outFileName,
-                         dcIgnoreWindow,
+                         useBandWidth,
+                         dcIgnoreWidth,
                          preTrigger,
                          postTrigger);
   SampleQueue sampleQueue(sampleKind, enob, sampleCount, 1024, correctDCOffset, outFileName != "");
