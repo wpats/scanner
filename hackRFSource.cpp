@@ -39,12 +39,12 @@ HackRFSource::HackRFSource(std::string args,
     m_streamingState(Illegal),
     m_nextValidStreamTime{0, 0},
     m_retuneTime(0.0100),
-    m_dropPacketCount(ceil(sampleRate * m_retuneTime / 131072)),
+    m_dropPacketCount(0), // ceil(sampleRate * m_retuneTime / 131072)),
     m_scanStartCount(101),
-    m_bufferIndex(0),
+    m_centerFrequency(1e12),
+    m_isScanStart(true),
     m_didRetune(false)
 {
-  this->m_buffer = new int8_t[sampleCount][2];
   int status;
 
   status = hackrf_init();
@@ -69,10 +69,10 @@ HackRFSource::HackRFSource(std::string args,
   HANDLE_ERROR("hackrf_set_baseband_filter_bandwidth %u: %%s", bandWidth );
 
   /* range 0-40 step 8d, IF gain in osmosdr  */
-  hackrf_set_lna_gain(this->m_dev, 0);
+  hackrf_set_lna_gain(this->m_dev, 24);
 
   /* range 0-62 step 2db, BB gain in osmosdr */
-  hackrf_set_vga_gain(this->m_dev, 6);
+  hackrf_set_vga_gain(this->m_dev, 28);
 
   /* Disable AMP gain stage by default. */
   hackrf_set_amp_enable(this->m_dev, 0);
@@ -147,6 +147,25 @@ int HackRFSource::_hackRF_rx_callback(hackrf_transfer* transfer)
   return obj->hackRF_rx_callback(transfer);
 }
 
+double HackRFSource::interpolateSamples(hackrf_transfer* transfer)
+{
+  uint32_t count = transfer->valid_length/2;
+  uint16_t frequencyMhz;
+  for (uint32_t i = 0; i < count; i += 8192) {
+    int8_t post[2] = { (int8_t)transfer->buffer[2*(i+1)], (int8_t)transfer->buffer[2*(i+1)+1] };
+    if (i > 0) {
+      post[0] = (post[0] + (int8_t)transfer->buffer[2*(i-1)])/2;
+      post[1] = (post[1] + (int8_t)transfer->buffer[2*(i-1)+1])/2;
+    } else {
+      frequencyMhz = *(uint16_t *)&transfer->buffer[0];
+    }
+    transfer->buffer[2*i] = post[0];
+    transfer->buffer[2*i+1] = post[1];
+  }
+  // printf("interpolateSamples: frequency[%f]\n", double(frequencyMhz) * 1e5);
+  return double(frequencyMhz) * 1e5;
+}
+
 int HackRFSource::hackRF_rx_callback(hackrf_transfer* transfer)
 {
   if (this->m_streamingState != Streaming) {
@@ -154,68 +173,46 @@ int HackRFSource::hackRF_rx_callback(hackrf_transfer* transfer)
   }
   // printf("hackRF_rx_callback valid_length:%d\n", transfer->valid_length);
   if (!this->GetIsDone()) { 
-    uint32_t previousDropPacketCount = this->m_dropPacketCount;
-    uint32_t previousScanStartCount = this->m_scanStartCount;
-    if (previousDropPacketCount > 0) this->m_dropPacketCount--;
-    if (previousScanStartCount > 0) this->m_scanStartCount--;
-    bool isScanStart = this->GetIsScanStart();
-#if 0
-    printf("isScanStart[%u] scanStartCount[%u] dropPacketCount[%u]\n", 
-           isScanStart, 
-           previousScanStartCount,
-           previousDropPacketCount);
-#endif
-    if (isScanStart) {
-      if (previousScanStartCount > 0) {
-        return 0;
+    double centerFrequency = this->interpolateSamples(transfer);
+    if (centerFrequency != this->m_centerFrequency) {
+      if (centerFrequency < this->m_centerFrequency) {
+        this->m_isScanStart = true;
       }
-    } 
-    if (previousDropPacketCount > 0) {
+      this->m_centerFrequency = centerFrequency;
+      this->m_dropPacketCount = 2;
       return 0;
     }
-    this->m_scanStartCount = 42;
-
-    double centerFrequency = this->GetCurrentFrequency();
-    uint32_t startIndex = this->m_bufferIndex;
-    uint32_t count = transfer->valid_length/2;
-    uint32_t discardCount = 0;
-    bool doRetune = false;
-    time_t startTime = time(NULL);
-    
-    if (count < this->m_sampleCount) {
-      if (this->m_bufferIndex < this->m_sampleCount) {
-        memcpy(this->m_buffer + startIndex,
-               transfer->buffer + 2 * discardCount, 
-               sizeof(int8_t) * 2 * count);
-        this->m_bufferIndex += count;
-      }
-      if (this->m_bufferIndex == this->m_sampleCount) {
-        if (this->GetFrequencyCount() > 1) {
-          doRetune = true;
-        }
-        this->m_sampleQueue->AppendSamples(this->m_buffer, 
-                                           centerFrequency,
-                                           (isScanStart ? startTime : 0));
-        this->m_bufferIndex = 0;
-      }
-    } else {
-      //printf("count[%d] >= this->m_sampleCount[%d]\n", count, this->m_sampleCount);
-      if (this->GetFrequencyCount() > 1) {
-        doRetune = true;
-      }
-      for (uint32_t i = 0; i < count; i+= this->m_sampleCount) {
-        // printf("hackRF_rx_callback appending[%d]\n", i);
-        this->m_sampleQueue->AppendSamples(reinterpret_cast<int8_t (*)[2]>(&transfer->buffer[2*i]),
-                                           centerFrequency,
-                                           (isScanStart ? startTime : 0));
-        isScanStart = false;
-      }
+    if (m_dropPacketCount > 0) {
+      this->m_dropPacketCount--;
+      return 0;
     }
+
+    uint32_t count = transfer->valid_length/2;
+    bool doRetune = false;
+    time_t startTime = 0;
+    if (this->m_isScanStart) {
+      startTime = time(NULL);
+    }
+
+    assert(count >= this->m_sampleCount);
+
+    if (this->GetFrequencyCount() > 1) {
+      doRetune = true;
+    }
+    for (uint32_t i = 0; i < count; i+= this->m_sampleCount) {
+      //printf("hackRF_rx_callback appending[%d] frequency[%f]\n", i, centerFrequency);
+      this->m_sampleQueue->AppendSamples(reinterpret_cast<int8_t (*)[2]>(&transfer->buffer[2*i]),
+                                         centerFrequency,
+                                         startTime);
+      this->m_isScanStart = false;
+    }
+#if 0
     if (doRetune) {
       StreamingState expected = Streaming;
       while (!this->m_streamingState.compare_exchange_strong(expected, DoRetune)) {
       }
     }
+#endif
   } else {
     StreamingState expected = Streaming;
     while (!this->m_streamingState.compare_exchange_strong(expected, Done)) {
@@ -267,9 +264,9 @@ void HackRFSource::ThreadWorker()
         double nextFrequency = this->GetNextFrequency();
         this->Retune(nextFrequency);
         this->m_didRetune = true;
-        struct timeval increment = {0, 5000}, currentTime;
-        gettimeofday(&currentTime, nullptr);
-        timeradd(&currentTime, &increment, &this->m_nextValidStreamTime);
+        //struct timeval increment = {0, 5000}, currentTime;
+        //gettimeofday(&currentTime, nullptr);
+        //timeradd(&currentTime, &increment, &this->m_nextValidStreamTime);
         this->m_dropPacketCount = ceil(this->m_sampleRate * this->m_retuneTime / 131072);
         StreamingState expected = DoRetune;
         while (!this->m_streamingState.compare_exchange_strong(expected, Streaming)) {

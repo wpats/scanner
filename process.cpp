@@ -35,7 +35,7 @@ void FFTWindow::apply(fftwf_complex * samples)
 
 bool ProcessSamples::process_fft(fftwf_complex * fft_data, SampleQueue::MessageHeader * header)
 {
-  uint32_t start_frequency = header->m_frequency - this->m_sampleRate/2;
+  double start_frequency = header->m_frequency - this->m_sampleRate/2;
   uint32_t bin_step = this->m_sampleRate/this->m_sampleCount;
   float magnitudes[this->m_sampleCount];
 
@@ -44,16 +44,16 @@ bool ProcessSamples::process_fft(fftwf_complex * fft_data, SampleQueue::MessageH
   uint32_t halfSampleCount = this->m_sampleCount/2;
   for (uint32_t i = 0; i < this->m_sampleCount; i++) {
     uint32_t j = (i + halfSampleCount) % this->m_sampleCount;
-    if (i < this->m_dcIgnoreWindow || (this->m_sampleCount - i) < this->m_dcIgnoreWindow) {
+    if (j < this->m_dcIgnoreWindow || (this->m_sampleCount - j) < this->m_dcIgnoreWindow) {
       continue;
     }
-    if (i > this->m_useWindow && i < (this->m_sampleCount - this->m_useWindow)) {
+    if (i < (halfSampleCount - this->m_useWindow) || i > (halfSampleCount + this->m_useWindow)) {
       continue;
     }
     if (magnitudes[j] > this->m_threshold) {
-      uint32_t frequency = start_frequency + i*bin_step;
+      double frequency = start_frequency + i*bin_step;
       // printf("Sequence[%llu] ", header->m_sequenceId);
-      printf("freq %u power_db %f\n", frequency, magnitudes[j]);
+      printf("freq %lu power_db %f\n", uint64_t(frequency), magnitudes[j]);
       trigger = true;
     }
   }
@@ -225,7 +225,7 @@ bool ProcessSamples::DoTimeDomainThresholding(fftwf_complex * inputSamples,
            this->m_threshold,
            header->m_frequency,
            minMagnitude);
-    printf("Max re[%f], im[%f]\n", maxre, maxim);
+    //printf("Max re[%f], im[%f]\n", maxre, maxim);
     return true;
   }
   return false;
