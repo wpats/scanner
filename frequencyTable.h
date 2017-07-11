@@ -24,4 +24,6 @@ class FrequencyTable
   void SetFrequencyInfoForIndex(uint32_t index, void * info);
   uint32_t GetIterationCount();
   bool GetIsScanStart();
+  double GetStartFrequency();
+  double GetStopFrequency();
 };

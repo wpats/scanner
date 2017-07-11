@@ -52,6 +52,7 @@ class MessageQueue
   uint64_t m_writeEndSequenceId;
   bool m_doWrite;
   uint32_t m_iterationCount;
+  std::atomic<bool> m_acknowledged;
 
   // Not related to writing.
   fftwf_complex * m_floatComplex;
@@ -86,6 +87,7 @@ class MessageQueue
     if (wake) {
       this->m_conditionEmpty.notify_one();
     }
+    this->ClearAck();
   }
   bool IsFull() {
     return this->m_buffer.full();
@@ -149,6 +151,7 @@ class MessageQueue
       m_enob(enob),
       m_kind(kind),
       m_done(false),
+      m_acknowledged(true),
       m_nextBufferSequenceId(0),
       m_correctDCOffset(correctDCOffset),
       m_writeStartSequenceId(0),
@@ -304,6 +307,20 @@ class MessageQueue
   //
   bool GetIsDone() {
     return this->m_done;
+  }
+
+  bool ReceivedAck() {
+    return this->m_acknowledged;
+  }
+
+  void SendAck() {
+    bool expected = false;
+    this->m_acknowledged.compare_exchange_strong(expected, true);
+  }
+
+  void ClearAck() {
+    bool expected = true;
+    this->m_acknowledged.compare_exchange_strong(expected, false);
   }
 };
   

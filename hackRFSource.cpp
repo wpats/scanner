@@ -42,7 +42,6 @@ HackRFSource::HackRFSource(std::string args,
     m_dropPacketCount(0), // ceil(sampleRate * m_retuneTime / 131072)),
     m_scanStartCount(101),
     m_centerFrequency(1e12),
-    m_isScanStart(true),
     m_didRetune(false)
 {
   int status;
@@ -85,8 +84,31 @@ HackRFSource::HackRFSource(std::string args,
     HANDLE_ERROR("Failed to enable antenna DC bias: %%s\n");
   }
 
-  double centerFrequency = this->GetCurrentFrequency();
-  this->Retune(centerFrequency);
+  double startFrequency1 = this->GetStartFrequency();
+  this->Retune(startFrequency1);
+
+  double stopFrequency1 = this->GetStopFrequency();
+  // This was my firmware sweep implementation. But Michael Ossmann has provided
+  // new firmware API that sweeps much faster.
+#if 0
+  status = hackrf_set_scan_parameters(this->m_dev,
+                                      uint64_t(startFrequency1),
+                                      uint64_t(stopFrequency1),
+                                      uint32_t(0.75 * sampleRate));
+  printf("Setting scan parameters: [%lu %lu %u]\n",
+         uint64_t(startFrequency1),
+         uint64_t(stopFrequency1),
+         uint32_t(0.75 * sampleRate));
+
+  HANDLE_ERROR("Failed to set scan parameters: %%s\n");
+#endif
+
+  // Store scan parameters to use later.
+  this->m_scanStartFrequency = uint16_t(startFrequency/1e6);
+  this->m_scanStopFrequency = uint16_t(stopFrequency/1e6);
+  this->m_scanNumBytes = sampleCount*2;
+  this->m_scanStepWidth = 0.75 * sampleRate;
+  this->m_scanOffset = this->m_scanStepWidth/2.0;
 }
 
 HackRFSource::~HackRFSource()
@@ -108,7 +130,21 @@ bool HackRFSource::Start()
                                  _hackRF_rx_callback, 
                                  (void *)this);
     HANDLE_ERROR("Failed to start RX streaming: %%s\n");
+
+    uint16_t frequencies[2];
+    frequencies[0] = this->m_scanStartFrequency;
+    frequencies[1] = this->m_scanStopFrequency;
+
+    status = hackrf_init_sweep(this->m_dev, 
+                               frequencies, 
+                               1, // num_ranges 
+                               this->m_scanNumBytes,
+                               this->m_scanStepWidth, // TUNE_STEP * FREQ_ONE_MHZ, 
+                               this->m_scanOffset, // OFFSET,
+                               LINEAR);
+    HANDLE_ERROR("Failed to set sweep parameters: %%s\n");
   }
+
   return true;
 }
 
@@ -151,19 +187,38 @@ double HackRFSource::interpolateSamples(hackrf_transfer* transfer)
 {
   uint32_t count = transfer->valid_length/2;
   uint16_t frequencyMhz;
+  uint64_t frequencyHz = 0UL;
   for (uint32_t i = 0; i < count; i += 8192) {
-    int8_t post[2] = { (int8_t)transfer->buffer[2*(i+1)], (int8_t)transfer->buffer[2*(i+1)+1] };
-    if (i > 0) {
-      post[0] = (post[0] + (int8_t)transfer->buffer[2*(i-1)])/2;
-      post[1] = (post[1] + (int8_t)transfer->buffer[2*(i-1)+1])/2;
-    } else {
-      frequencyMhz = *(uint16_t *)&transfer->buffer[0];
+    uint8_t * ubuf = (uint8_t *)transfer->buffer;
+    if(ubuf[0] == 0x7F && ubuf[1] == 0x7F) {
+      uint64_t thisFrequencyHz = ((uint64_t)(ubuf[9]) << 56) 
+        | ((uint64_t)(ubuf[8]) << 48) 
+        | ((uint64_t)(ubuf[7]) << 40)
+        | ((uint64_t)(ubuf[6]) << 32) 
+        | ((uint64_t)(ubuf[5]) << 24) 
+        | ((uint64_t)(ubuf[4]) << 16)
+        | ((uint64_t)(ubuf[3]) << 8) 
+        | ubuf[2];
+      if (frequencyHz != 0 && frequencyHz != thisFrequencyHz) {
+        printf("interpolateSamples: frequencyHz[%f] != thisFrequencyHz[%f]\n", 
+               double(frequencyHz),
+               double(thisFrequencyHz));
+      }
+      frequencyHz = thisFrequencyHz;
+      int8_t post[2] = { (int8_t)ubuf[10], (int8_t)ubuf[11] };
+      if (i > 0) {
+        post[0] = (post[0] + (int8_t)transfer->buffer[2*(i-1)])/2;
+        post[1] = (post[1] + (int8_t)transfer->buffer[2*(i-1)+1])/2;
+      }
+      // Replace with interpolated samples.
+      for (uint32_t j = 0; j < 5; j++) {
+        ubuf[2*j] = post[0];
+        ubuf[2*j+1] = post[1];
+      }
     }
-    transfer->buffer[2*i] = post[0];
-    transfer->buffer[2*i+1] = post[1];
   }
   // printf("interpolateSamples: frequency[%f]\n", double(frequencyMhz) * 1e5);
-  return double(frequencyMhz) * 1e5;
+  return double(frequencyHz + this->m_scanOffset);
 }
 
 int HackRFSource::hackRF_rx_callback(hackrf_transfer* transfer)
@@ -174,45 +229,39 @@ int HackRFSource::hackRF_rx_callback(hackrf_transfer* transfer)
   // printf("hackRF_rx_callback valid_length:%d\n", transfer->valid_length);
   if (!this->GetIsDone()) { 
     double centerFrequency = this->interpolateSamples(transfer);
+    bool isScanStart = false;
     if (centerFrequency != this->m_centerFrequency) {
-      if (centerFrequency < this->m_centerFrequency) {
-        this->m_isScanStart = true;
-      }
+      // This is solely to decrement iteration count.
+      this->GetNextFrequency();
+      isScanStart = this->GetIsScanStart();
       this->m_centerFrequency = centerFrequency;
-      this->m_dropPacketCount = 2;
-      return 0;
+      // this->m_dropPacketCount = 2;
+      // return 0;
     }
+
+#if 0
+    // Ossmann's sweep drops the packets in the device instead of
+    // transferring to the host and dropping here.
     if (m_dropPacketCount > 0) {
       this->m_dropPacketCount--;
       return 0;
     }
+#endif
 
     uint32_t count = transfer->valid_length/2;
-    bool doRetune = false;
     time_t startTime = 0;
-    if (this->m_isScanStart) {
+    if (isScanStart) {
       startTime = time(NULL);
     }
 
     assert(count >= this->m_sampleCount);
 
-    if (this->GetFrequencyCount() > 1) {
-      doRetune = true;
-    }
     for (uint32_t i = 0; i < count; i+= this->m_sampleCount) {
       //printf("hackRF_rx_callback appending[%d] frequency[%f]\n", i, centerFrequency);
       this->m_sampleQueue->AppendSamples(reinterpret_cast<int8_t (*)[2]>(&transfer->buffer[2*i]),
                                          centerFrequency,
                                          startTime);
-      this->m_isScanStart = false;
     }
-#if 0
-    if (doRetune) {
-      StreamingState expected = Streaming;
-      while (!this->m_streamingState.compare_exchange_strong(expected, DoRetune)) {
-      }
-    }
-#endif
   } else {
     StreamingState expected = Streaming;
     while (!this->m_streamingState.compare_exchange_strong(expected, Done)) {

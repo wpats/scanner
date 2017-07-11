@@ -16,6 +16,12 @@ class HackRFSource : public SignalSource
   uint32_t m_dropPacketCount;
   uint32_t m_scanStartCount;
   double m_centerFrequency;
+  // New hackrf sweep parameters.
+  uint16_t m_scanStartFrequency;
+  uint16_t m_scanStopFrequency;
+  uint32_t m_scanNumBytes;
+  uint32_t m_scanStepWidth;
+  uint32_t m_scanOffset;
   bool m_isScanStart;
   struct hackrf_device * m_dev;
   bool m_done_streaming;

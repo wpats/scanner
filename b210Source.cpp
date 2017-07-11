@@ -218,8 +218,8 @@ void B210Source::ThreadWorker()
       exit(1);
     }
     bool isScanStart = this->GetIsScanStart();
-    double nextFrequency = this->GetNextFrequency();
-    if (this->GetFrequencyCount() > 1) {
+    if (this->GetFrequencyCount() > 1 && this->DoRetune()) {
+      double nextFrequency = this->GetNextFrequency();
       this->Retune(nextFrequency);
     }
     this->m_sampleQueue->AppendSamples(sample_buffer, 

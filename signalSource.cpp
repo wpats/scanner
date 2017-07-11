@@ -19,6 +19,7 @@ SignalSource::SignalSource(uint32_t sampleRate,
     m_iterationLimit(0),
     m_thread(nullptr),
     m_finished(false),
+    m_synchronousMode(false),
     m_frequencyTable(sampleRate, startFrequency, stopFrequency, useBandWidth, dcIgnoreWidth),
     m_doTiming(doTiming),
     m_retuneTimeIndex(0),
@@ -46,6 +47,16 @@ double SignalSource::GetCurrentFrequency(void ** pinfo)
   return this->m_frequencyTable.GetCurrentFrequency(pinfo);
 }
 
+double SignalSource::GetStartFrequency()
+{
+  return this->m_frequencyTable.GetStartFrequency();
+}
+
+double SignalSource::GetStopFrequency()
+{
+  return this->m_frequencyTable.GetStopFrequency();
+}
+
 uint32_t SignalSource::GetFrequencyCount()
 {
   return this->m_frequencyTable.GetFrequencyCount();
@@ -59,6 +70,14 @@ bool SignalSource::GetIsScanStart()
 uint32_t SignalSource::GetIterationCount()
 {
   return this->m_frequencyTable.GetIterationCount();
+}
+
+bool SignalSource::DoRetune()
+{
+  if (this->m_synchronousMode && this->m_sampleQueue != nullptr) {
+    return this->m_sampleQueue->ReceivedAck();
+  }
+  return true;
 }
 
 bool SignalSource::StartThread(uint32_t numIterations, SampleQueue & sampleQueue)

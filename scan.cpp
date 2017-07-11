@@ -19,6 +19,7 @@
 #include "airspySource.h"
 #include "sdrplaySource.h"
 #include "hackRFSource.h"
+#include "rtlSource.h"
 #include "scan.h"
 
 
@@ -174,6 +175,16 @@ int main(int argc, char *argv[])
     if (dcIgnoreWidth == 0.0) {
       dcIgnoreWidth = 0.05;
     }
+    dcIgnoreWidth = 0.0;
+  } else if (args.find("rtl") != std::string::npos) {
+    source = new RtlSource(args, 
+      sample_rate, 
+      sampleCount, 
+      startFrequency, 
+      stopFrequency);
+    enob = 8;
+    correctDCOffset = false;
+    sampleKind = SampleQueue::ByteComplex;
     dcIgnoreWidth = 0.0;
   } else {
     std::cout << "Missing source type argument" << std::endl;

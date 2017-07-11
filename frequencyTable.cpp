@@ -52,6 +52,18 @@ double FrequencyTable::GetCurrentFrequency(void ** pinfo)
   return finfo.m_frequency;
 }
 
+double FrequencyTable::GetStartFrequency()
+{
+  FrequencyInfo & finfo = this->m_table.front();
+  return finfo.m_frequency;
+}
+
+double FrequencyTable::GetStopFrequency()
+{
+  FrequencyInfo & finfo = this->m_table.back();
+  return finfo.m_frequency;
+}
+
 uint32_t FrequencyTable::GetFrequencyCount()
 {
   return this->m_table.size();

@@ -16,6 +16,7 @@ class SignalSource
   uint32_t m_getSamplesTimeIndex;
   bool m_isDone; // Set to true to terminate
   bool m_finished;
+  bool m_synchronousMode;
   std::unique_ptr<std::thread> m_thread;
   std::vector<double> m_retuneTime;
   std::vector<double> m_getSamplesTime;
@@ -36,6 +37,8 @@ class SignalSource
   uint32_t GetIterationCount();
   double GetCurrentFrequency(void ** pinfo = nullptr);
   double GetNextFrequency(void ** pinfo = nullptr);
+  double GetStartFrequency();
+  double GetStopFrequency();
   bool GetIsDone();
 
  public:
@@ -53,6 +56,7 @@ class SignalSource
   virtual void ThreadWorker() = 0;
   virtual bool Stop();
   virtual double Retune(double frequency) = 0;
+  bool DoRetune();
   uint32_t GetFrequencyCount();
   bool GetIsScanStart();
   void StopStreaming();
