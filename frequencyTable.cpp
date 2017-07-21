@@ -21,13 +21,16 @@ FrequencyTable::FrequencyTable(uint32_t sampleRate,
   }
   double frequency;
   uint32_t count = 0;
-  for (; (frequency = f1 + count * step * double(sampleRate)) < stopFrequency; count++) {
+  if (stopFrequency == 0.0) {
+    count = 1;
+  } else {
+    for (; (frequency = f1 + count * step * double(sampleRate)) < stopFrequency; count++) {
+    }
+    assert(count == ceil((stopFrequency - f1)/(step * sampleRate)));
   }
-  assert(count == ceil((stopFrequency - f1)/(step * sampleRate)));
   this->m_table.resize(count);
   for (uint32_t i = 0; i < count; i++) {
     double frequency = f1 + i * step * double(sampleRate);
-    // double frequency = startFrequency + i * double(sampleRate) + double(sampleRate)/2;
     printf("Frequency %d: %.0f\n", i, frequency);
     this->m_table.at(i) = FrequencyInfo{frequency, nullptr};
   }

@@ -157,7 +157,8 @@ int RtlSource::rtl_rx_callback(void * samples, int sample_count)
   time_t startTime;
 
   if (!this->GetIsDone()) { 
-    if (this->m_dropPacketCount-- > 0) {
+    if (this->m_dropPacketCount > 0) {
+      this->m_dropPacketCount--;
       return 0;
     }
     double centerFrequency = this->GetCurrentFrequency();

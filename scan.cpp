@@ -60,8 +60,8 @@ int main(int argc, char *argv[])
   struct bladerf_devinfo dev_info;
   uint32_t sample_rate = 8000000;
   float threshold;
-  double startFrequency;
-  double stopFrequency;
+  double startFrequency = 3e8;
+  double stopFrequency = 0; // This means don't sweep. Stay at startFrequency.
   double useBandWidth = 0.75;
   double dcIgnoreWidth = 0.0;
   std::string args;
@@ -73,6 +73,8 @@ int main(int argc, char *argv[])
   uint32_t bandWidth;
   uint32_t preTrigger;
   uint32_t postTrigger;
+  bool sweepMode = true;
+
   namespace po = boost::program_options;
 
   po::options_description desc("Program options");
@@ -94,8 +96,9 @@ int main(int argc, char *argv[])
   // Hidden options.
   po::options_description hidden("Hidden options");
   hidden.add_options()
-    ("start_freq", po::value<double>(&startFrequency)->default_value(300e6), "Start Frequency")
-    ("stop_freq", po::value<double>(&stopFrequency)->default_value(3800e6), "Stop Frequency");
+    // No default for these.
+    ("start_freq", po::value<double>(&startFrequency), "Start Frequency")
+    ("stop_freq", po::value<double>(&stopFrequency), "Stop Frequency");
 
   po::positional_options_description pod;
   pod.add("start_freq", 1);
@@ -119,8 +122,16 @@ int main(int argc, char *argv[])
     mode = ProcessSamples::FrequencyDomain;
   }
   if (vm.count("help") || mode == ProcessSamples::Illegal) {
-    std::cout << desc << "\n";
+    std::cout << desc << hidden << "\n";
     return 1;
+  }
+  if (!vm.count("start_freq")) {
+    std::cout << "No start frequency" << "\n";
+    std::cout << desc << hidden << "\n";
+    return 1;
+  }
+  if (!vm.count("stop_freq")) {
+    stopFrequency = 0; // This means don't sweep. Stay at startFrequency.
   }
 
   SignalSource * source = nullptr;
